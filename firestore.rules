@@ -1,0 +1,69 @@
+rules_version = '2';
+// Reglas de seguridad de Firestore para Soundcheck.
+// Publícalas con:  firebase deploy --only firestore:rules
+// (o pégalas en Firebase Console → Firestore Database → Rules → Publish).
+//
+// Principios:
+// - Cada usuario lee/escribe SOLO su documento y subcolecciones.
+// - Nadie lee los attempts de otro (ahí van transcripciones de voz).
+// - families/{id} es legible solo por miembros de esa familia.
+// - scoreboard/{uid} lo escribe solo ese uid, pero lo leen todos los miembros.
+//
+// Nota de diseño: para poder UNIRSE por código sin exponer los datos de la
+// familia, existe la colección pública mínima joinCodes/{CODE} -> { familyId }.
+// Solo mapea código a id; no revela nombres, progreso ni transcripciones.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+    function isOwner(uid) {
+      return request.auth != null && request.auth.uid == uid;
+    }
+    // ¿El usuario actual pertenece a esta familia? (según su propio doc de usuario)
+    function memberOf(familyId) {
+      return signedIn() &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.familyId == familyId;
+    }
+
+    // ---- Usuarios ----
+    match /users/{uid} {
+      allow read, write: if isOwner(uid);
+
+      // Tarjetas (progreso Leitner) — privadas del dueño.
+      match /cards/{phraseId} {
+        allow read, write: if isOwner(uid);
+      }
+
+      // Intentos — incluyen transcripciones de voz. NADIE más puede leerlos.
+      match /attempts/{attemptId} {
+        allow read, write: if isOwner(uid);
+      }
+    }
+
+    // ---- Mapa público de códigos de invitación ----
+    match /joinCodes/{code} {
+      allow read: if signedIn();
+      // Se crea al fundar el grupo; el familyId debe apuntar a un string.
+      allow create: if signedIn()
+        && request.resource.data.familyId is string;
+      allow update, delete: if false;
+    }
+
+    // ---- Familias ----
+    match /families/{familyId} {
+      // Legible solo por miembros; crear solo el fundador.
+      allow read: if memberOf(familyId);
+      allow create: if signedIn() && request.resource.data.createdBy == request.auth.uid;
+      allow update, delete: if false;
+
+      // Marcador: agregados públicos entre miembros. Cada uid escribe solo el suyo.
+      match /scoreboard/{uid} {
+        allow read: if memberOf(familyId);
+        allow write: if isOwner(uid);
+      }
+    }
+  }
+}

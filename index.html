@@ -1,0 +1,871 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#14161B" />
+<meta name="description" content="Soundcheck — práctica de inglés hablado y comprensión auditiva para viajar, con repetición espaciada." />
+<title>Soundcheck</title>
+<link rel="manifest" href="manifest.json" />
+<link rel="icon" href="icon-192.png" />
+<link rel="apple-touch-icon" href="icon-192.png" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --console: #14161B;
+    --panel:   #1C2028;
+    --panel2:  #232833;
+    --edge:    #2E3542;
+    --amber:   #F5B342;
+    --rec:     #E8564A;
+    --ok:      #7FD1AE;
+    --text:    #E6E9EF;
+    --dim:     #868FA0;
+
+    --label: "Barlow Condensed", "Arial Narrow", sans-serif;
+    --body: "IBM Plex Sans", system-ui, -apple-system, sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, "Courier New", monospace;
+
+    --r: 9px;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--console);
+    color: var(--text);
+    font-family: var(--body);
+    font-size: 16px;
+    line-height: 1.45;
+    -webkit-text-size-adjust: 100%;
+    padding-top: env(safe-area-inset-top);
+  }
+
+  .lbl {
+    font-family: var(--label);
+    text-transform: uppercase;
+    letter-spacing: .14em;
+    font-weight: 600;
+  }
+  .mono { font-family: var(--mono); }
+  .dim { color: var(--dim); }
+
+  button {
+    font-family: var(--body);
+    color: var(--text);
+    background: var(--panel2);
+    border: 1px solid var(--edge);
+    border-radius: var(--r);
+    padding: 12px 14px;
+    font-size: 15px;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+  button:active { transform: translateY(1px); }
+  button:focus-visible, a:focus-visible, input:focus-visible, summary:focus-visible {
+    outline: 2px solid var(--amber);
+    outline-offset: 2px;
+  }
+  button.primary {
+    background: var(--amber);
+    color: #1a1408;
+    border-color: var(--amber);
+    font-weight: 600;
+  }
+  button.danger { border-color: var(--rec); color: var(--rec); }
+  button:disabled { opacity: .5; cursor: default; }
+
+  input[type="text"] {
+    width: 100%;
+    background: var(--console);
+    color: var(--text);
+    border: 1px solid var(--edge);
+    border-radius: var(--r);
+    padding: 11px 12px;
+    font-size: 16px;
+    font-family: var(--body);
+  }
+
+  .app { max-width: 640px; margin: 0 auto; padding: 14px 14px 96px; }
+
+  .topbar {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 14px;
+  }
+  .brand { display: flex; align-items: center; gap: 10px; }
+  .brand .mark {
+    width: 26px; height: 26px; border-radius: 6px; border: 1px solid var(--edge);
+    background: var(--panel);
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 2px; padding: 4px;
+  }
+  .brand .mark i { background: var(--amber); border-radius: 1px; display: block; }
+  .brand .mark i:nth-child(1){ opacity:.55 } .brand .mark i:nth-child(3){ opacity:.7 }
+  .brand h1 { font-family: var(--label); text-transform: uppercase; letter-spacing:.14em; font-size: 18px; margin: 0; }
+
+  .avatar { width: 30px; height: 30px; border-radius: 50%; border: 1px solid var(--edge); background: var(--panel2); object-fit: cover; }
+
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--edge);
+    border-radius: var(--r);
+    padding: 16px;
+    margin-bottom: 12px;
+  }
+  .panel h2 { font-family: var(--label); text-transform: uppercase; letter-spacing:.14em; font-size: 13px; color: var(--dim); margin: 0 0 10px; }
+
+  .row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .row.tight { gap: 6px; }
+  .grow { flex: 1; }
+  .center { text-align: center; }
+  .stat { font-family: var(--mono); font-size: 28px; font-weight: 500; }
+  .big-en { font-size: 24px; font-weight: 600; margin: 4px 0; }
+  .ph { font-family: var(--mono); color: var(--amber); font-size: 15px; }
+  .es { color: var(--dim); font-size: 15px; }
+
+  /* Medidor VU */
+  .vu { display: flex; gap: 3px; height: 40px; align-items: stretch; margin: 14px 0; }
+  .vu i {
+    flex: 1;
+    background: var(--panel2);
+    border-radius: 2px;
+    border: 1px solid var(--edge);
+    transition: background .05s linear;
+  }
+  @media (prefers-reduced-motion: reduce) { .vu i { transition: none; } }
+  .vu i.on-lo { background: var(--ok); border-color: var(--ok); }
+  .vu i.on-mid { background: var(--amber); border-color: var(--amber); }
+  .vu i.on-hi { background: var(--rec); border-color: var(--rec); }
+
+  .words { font-size: 20px; line-height: 1.7; margin: 8px 0; }
+  .words .w-ok { color: var(--ok); }
+  .words .w-bad { color: var(--rec); text-decoration: line-through; }
+
+  .scorebadge { font-family: var(--mono); font-size: 40px; font-weight: 500; }
+
+  details { border: 1px solid var(--edge); border-radius: var(--r); padding: 10px 12px; margin-top: 10px; background: var(--console); }
+  details summary { cursor: pointer; color: var(--dim); font-family: var(--label); text-transform: uppercase; letter-spacing:.12em; font-size: 12px; }
+
+  .msg { padding: 11px 12px; border-radius: var(--r); margin-bottom: 10px; max-width: 90%; }
+  .msg.ai { background: var(--panel2); border: 1px solid var(--edge); }
+  .msg.me { background: #2a3550; margin-left: auto; }
+  .msg .r-es { color: var(--dim); font-size: 14px; margin-top: 4px; }
+  .correction { border: 1px solid var(--rec); border-radius: var(--r); padding: 10px 12px; margin-bottom: 10px; }
+  .correction .c-better { color: var(--ok); font-weight: 600; }
+  .correction .c-why { color: var(--dim); font-size: 14px; }
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+  .chip { background: var(--panel2); border: 1px solid var(--edge); border-radius: 16px; padding: 8px 12px; font-size: 14px; }
+
+  .banner { border-radius: var(--r); padding: 10px 12px; margin-bottom: 12px; font-size: 14px; }
+  .banner.warn { background: #33261a; border: 1px solid var(--amber); color: var(--amber); }
+  .banner.err { background: #331f1d; border: 1px solid var(--rec); color: #ffb3ac; }
+
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--edge); }
+  th { font-family: var(--label); text-transform: uppercase; letter-spacing: .1em; font-size: 11px; color: var(--dim); }
+  td.num { font-family: var(--mono); text-align: right; }
+  .member { display: flex; align-items: center; gap: 8px; }
+  .member img { width: 26px; height: 26px; border-radius: 50%; }
+
+  nav.bottom {
+    position: fixed; left: 0; right: 0; bottom: 0;
+    background: var(--panel);
+    border-top: 1px solid var(--edge);
+    display: flex; justify-content: space-around;
+    padding: 6px 4px calc(6px + env(safe-area-inset-bottom));
+    z-index: 20;
+  }
+  nav.bottom button {
+    background: none; border: none; border-radius: 8px;
+    display: flex; flex-direction: column; align-items: center; gap: 3px;
+    color: var(--dim); font-size: 11px; padding: 6px 10px; flex: 1;
+    font-family: var(--label); text-transform: uppercase; letter-spacing: .1em;
+  }
+  nav.bottom button .ic { font-size: 18px; line-height: 1; }
+  nav.bottom button.active { color: var(--amber); }
+
+  .bigbtn { width: 100%; padding: 20px; font-size: 18px; font-weight: 600; }
+  .kbd { font-family: var(--mono); background: var(--console); border: 1px solid var(--edge); border-radius: 6px; padding: 2px 8px; letter-spacing: .18em; font-size: 22px; }
+  .hide { display: none !important; }
+  .spinner { display:inline-block; width:16px;height:16px;border:2px solid var(--edge);border-top-color:var(--amber);border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { .spinner { animation: none; } }
+</style>
+</head>
+<body>
+<div id="root" class="app">
+  <div class="center" style="padding:60px 0"><span class="spinner"></span></div>
+</div>
+
+<script type="module">
+import { PHRASES, SCENARIOS, phraseById, scenarioById } from './js/content.js';
+import { scoreAttempt } from './js/lcs.js';
+import { newCard, updateCard, buildSession, isMastered, DAY } from './js/leitner.js';
+import { detectWeakSpots, phrasesForPattern } from './js/weakspots.js';
+import { TRIP_DATE } from './js/firebaseConfig.js';
+import {
+  primeVoices, speak, stopSpeaking, createRecognizer, recognitionSupported,
+  speechErrorMessage, MicMeter,
+} from './js/audio.js';
+import * as store from './js/store.js';
+
+// ---------- utilidades ----------
+const $ = (sel, el = document) => el.querySelector(sel);
+const root = $('#root');
+
+/** Escapa TODO el HTML dinámico. Objetivo real de XSS: transcripciones,
+ *  respuestas de IA y nombres de otros usuarios entran al DOM. */
+function esc(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+function daysUntilTrip() {
+  const trip = new Date(TRIP_DATE + 'T00:00:00');
+  const now = new Date();
+  const t0 = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  return Math.round((trip - t0) / DAY);
+}
+
+function isOnline() { return navigator.onLine !== false; }
+
+// ---------- estado ----------
+const S = {
+  user: null,
+  userDoc: null,
+  cards: {},       // phraseId -> card
+  view: 'today',
+  session: null,   // sesión en curso
+};
+
+function masteredCount() {
+  return Object.values(S.cards).filter((c) => isMastered(c.box)).length;
+}
+function allMissedWords() {
+  const out = [];
+  for (const c of Object.values(S.cards)) {
+    for (const w of (c.missedWords || [])) out.push(w);
+  }
+  return out;
+}
+function currentWeakSpot() {
+  const list = detectWeakSpots(allMissedWords());
+  return list[0] || null;
+}
+
+// ---------- medidor VU ----------
+function makeVU(container) {
+  container.innerHTML = '';
+  container.classList.add('vu');
+  const segs = [];
+  for (let i = 0; i < 24; i++) {
+    const seg = document.createElement('i');
+    container.appendChild(seg);
+    segs.push(seg);
+  }
+  return {
+    // Actualiza SOLO className de los segmentos existentes (nunca innerHTML a 60fps).
+    setLevel(level) {
+      const active = Math.round(level * 24);
+      for (let i = 0; i < 24; i++) {
+        const on = i < active;
+        seg_class(segs[i], on, i);
+      }
+    },
+    setScore(score) {
+      const active = Math.round((score / 100) * 24);
+      for (let i = 0; i < 24; i++) seg_class(segs[i], i < active, i);
+    },
+    reset() { for (const s of segs) s.className = ''; },
+  };
+}
+function seg_class(seg, on, i) {
+  let cls = '';
+  if (on) cls = i < 14 ? 'on-lo' : i < 20 ? 'on-mid' : 'on-hi';
+  if (seg.className !== cls) seg.className = cls;
+}
+
+// ---------- render raíz ----------
+function render() {
+  if (!S.user) { renderLogin(); return; }
+  root.innerHTML = topbar() + `<div id="view"></div>` + bottomNav();
+  wireTopbar();
+  wireNav();
+  renderView();
+}
+
+function topbar() {
+  const photo = S.user.photoURL
+    ? `<img class="avatar" src="${esc(S.user.photoURL)}" alt="" referrerpolicy="no-referrer" />`
+    : `<div class="avatar"></div>`;
+  return `<div class="topbar">
+    <div class="brand"><div class="mark"><i></i><i></i><i></i><i></i></div><h1>Soundcheck</h1></div>
+    <button id="me" style="padding:0;border:none;background:none">${photo}</button>
+  </div>${offlineBanner()}`;
+}
+function offlineBanner() {
+  if (isOnline()) return '';
+  return `<div class="banner warn">Sin internet. Kit y Oído funcionan igual; tu progreso se sincroniza cuando vuelva la señal.</div>`;
+}
+function wireTopbar() {
+  const me = $('#me');
+  if (me) me.onclick = () => {
+    if (confirm('¿Cerrar sesión?')) store.signOutUser();
+  };
+}
+
+function bottomNav() {
+  const items = [
+    ['today', 'Hoy', '◎'],
+    ['kit', 'Kit', '▤'],
+    ['oido', 'Oído', '◑'],
+    ['charla', 'Charla', '❝'],
+    ['familia', 'Familia', '⁂'],
+  ];
+  return `<nav class="bottom">${items.map(([id, label, ic]) =>
+    `<button data-nav="${id}" class="${S.view === id ? 'active' : ''}">
+      <span class="ic" aria-hidden="true">${ic}</span>${esc(label)}</button>`).join('')}</nav>`;
+}
+function wireNav() {
+  root.querySelectorAll('[data-nav]').forEach((b) => {
+    b.onclick = () => { S.view = b.dataset.nav; render(); };
+  });
+}
+
+function renderView() {
+  const v = $('#view');
+  if (!v) return;
+  stopSpeaking();
+  if (S.view === 'today') return renderToday(v);
+  if (S.view === 'kit') return renderPractice(v, 'speak');
+  if (S.view === 'oido') return renderPractice(v, 'listen');
+  if (S.view === 'charla') return renderCharla(v);
+  if (S.view === 'familia') return renderFamilia(v);
+}
+
+// ---------- LOGIN ----------
+function renderLogin() {
+  root.innerHTML = `
+    <div class="panel center" style="margin-top:40px">
+      <div class="brand" style="justify-content:center;margin-bottom:14px">
+        <div class="mark"><i></i><i></i><i></i><i></i></div><h1>Soundcheck</h1>
+      </div>
+      <p class="dim">Práctica de inglés hablado y de oído para tu viaje.</p>
+      <div id="loginErr"></div>
+      <button class="primary bigbtn" id="login">Entrar con Google</button>
+    </div>`;
+  $('#login').onclick = async () => {
+    $('#loginErr').innerHTML = '';
+    try { await store.signIn(); }
+    catch (e) {
+      const msg = (e && e.code === 'auth/unauthorized-domain')
+        ? 'Falta autorizar este dominio en Firebase Console → Authentication → Settings → Dominios autorizados.'
+        : 'No se pudo iniciar sesión. Revisa tu conexión e intenta de nuevo.';
+      $('#loginErr').innerHTML = `<div class="banner err">${esc(msg)}</div>`;
+    }
+  };
+}
+
+// ---------- HOY ----------
+function renderToday(v) {
+  const name = (S.user.displayName || '').split(' ')[0] || 'Hola';
+  const streak = (S.userDoc && S.userDoc.streak) || 0;
+  const days = daysUntilTrip();
+  const weak = currentWeakSpot();
+  const dueNow = PHRASES.filter((p) => S.cards[p.id] && S.cards[p.id].dueAt <= Date.now()).length;
+
+  v.innerHTML = `
+    <div class="panel">
+      <h2>Hola, ${esc(name)}</h2>
+      <div class="row">
+        <div class="grow center panel" style="margin:0">
+          <div class="lbl dim" style="font-size:11px">Racha</div>
+          <div class="stat">${streak}<span class="dim" style="font-size:14px"> días</span></div>
+        </div>
+        <div class="grow center panel" style="margin:0">
+          <div class="lbl dim" style="font-size:11px">Para el viaje</div>
+          <div class="stat">${days}<span class="dim" style="font-size:14px"> días</span></div>
+        </div>
+        <div class="grow center panel" style="margin:0">
+          <div class="lbl dim" style="font-size:11px">Dominadas</div>
+          <div class="stat">${masteredCount()}</div>
+        </div>
+      </div>
+    </div>
+    <button class="primary bigbtn" id="startSession">Sesión de hoy · 12 tarjetas</button>
+    <div class="dim center" style="margin:8px 0 16px">${dueNow > 0 ? esc(dueNow + ' frases vencidas para repasar') : 'Sin frases vencidas · practicarás frases nuevas'}</div>
+    ${weak ? weakSpotPanel(weak) : `<div class="panel dim">Aún no hay suficientes datos para detectar tu punto débil. Haz una sesión.</div>`}
+    <div class="panel">
+      <h2>Accesos directos</h2>
+      <div class="row">
+        <button class="grow" data-nav2="kit">Kit · pronunciación</button>
+        <button class="grow" data-nav2="oido">Oído · comprensión</button>
+        <button class="grow" data-nav2="charla">Charla con IA</button>
+      </div>
+    </div>`;
+
+  $('#startSession').onclick = startDailySession;
+  v.querySelectorAll('[data-nav2]').forEach((b) => b.onclick = () => { S.view = b.dataset.nav2; render(); });
+}
+
+function weakSpotPanel(weak) {
+  return `<div class="panel">
+    <h2>Tu punto débil</h2>
+    <div class="big-en">Tu sonido más difícil: ${esc(weak.label)}.</div>
+    <div class="dim">${esc(weak.problem)} Aparece en ${weak.count} de tus fallos: <span class="mono">${esc(weak.words.slice(0, 6).join(', '))}</span></div>
+    <button class="primary" id="drillWeak" style="margin-top:12px">Practicar solo estas palabras</button>
+  </div>`;
+}
+
+// ---------- SESIONES / PRÁCTICA ----------
+function startDailySession() {
+  const plan = buildSession(PHRASES, S.cards, Date.now());
+  runSession(plan, 'Sesión de hoy');
+}
+
+function startWeakDrill(key) {
+  const phrases = phrasesForPattern(PHRASES, key);
+  if (!phrases.length) return;
+  const plan = phrases.slice(0, 12).map((p) => ({ phraseId: p.id, mode: 'speak' }));
+  runSession(plan, 'Punto débil');
+}
+
+// Ejecuta una secuencia de tarjetas y hace UN writeBatch al final.
+function runSession(plan, title) {
+  S.session = { plan, i: 0, results: [], upgrades: 0, title, missed: [] };
+  renderSessionCard();
+}
+
+function renderSessionCard() {
+  const sess = S.session;
+  if (sess.i >= sess.plan.length) return finishSession();
+  const item = sess.plan[sess.i];
+  const phrase = phraseById(item.phraseId);
+  root.innerHTML = `<div class="app-inner">
+    <div class="topbar"><div class="lbl">${esc(sess.title)}</div><div class="mono dim">${sess.i + 1}/${sess.plan.length}</div></div>
+    <div id="card"></div>
+  </div>`;
+  mountCard($('#card'), phrase, item.mode, (result) => {
+    sess.results.push(result);
+    const prev = S.cards[phrase.id] || newCard(phrase.id);
+    const updated = updateCard(prev, result.score, result.missedWords);
+    if (updated.box > prev.box) sess.upgrades++;
+    S.cards[phrase.id] = updated;
+    result.card = updated;
+    for (const w of result.missedWords) sess.missed.push(w);
+    sess.i++;
+    renderSessionCard();
+  }, { inSession: true });
+}
+
+async function finishSession() {
+  const sess = S.session;
+  // Aggregados y racha.
+  const now = Date.now();
+  const prevLast = (S.userDoc && S.userDoc.lastSessionAt) || 0;
+  const streak = nextStreak((S.userDoc && S.userDoc.streak) || 0, prevLast, now);
+  const mc = masteredCount();
+
+  // Persistencia por lotes (un solo writeBatch; se sincroniza junto offline).
+  const results = sess.results.map((r) => ({
+    phraseId: r.phraseId,
+    card: r.card,
+    attempt: { phraseId: r.phraseId, score: r.score, transcript: r.transcript || '', missedWords: r.missedWords, mode: r.mode },
+  }));
+
+  // El writeBatch se aplica a la caché local de inmediato; su promesa solo se
+  // resuelve cuando el servidor confirma. NO la esperamos: offline se quedaría
+  // pendiente para siempre y el resumen nunca aparecería. Se sincroniza solo.
+  store.commitSession(S.user.uid, results, {
+    masteredCount: mc, streak,
+    familyId: S.userDoc && S.userDoc.familyId,
+    displayName: S.user.displayName, photoURL: S.user.photoURL,
+  }, now).catch(() => { /* se reintenta al reconectar (persistencia offline) */ });
+
+  if (S.userDoc) { S.userDoc.streak = streak; S.userDoc.masteredCount = mc; S.userDoc.lastSessionAt = now; }
+  const saveNote = isOnline() ? '' : 'Progreso guardado en el dispositivo; se sincronizará al reconectar.';
+
+  const weak = detectWeakSpots(sess.missed)[0];
+  root.innerHTML = topbar() + `<div id="view"></div>` + bottomNav();
+  wireTopbar(); wireNav();
+  const v = $('#view');
+  v.innerHTML = `
+    <div class="panel center">
+      <h2>Sesión terminada</h2>
+      <div class="scorebadge">${sess.upgrades}</div>
+      <div class="dim">tarjetas subieron de caja</div>
+      ${weak ? `<p style="margin-top:14px">Punto débil de hoy: <b>${esc(weak.label)}</b> — ${esc(weak.words.slice(0,5).join(', '))}</p>` : ''}
+      ${saveNote ? `<div class="banner warn" style="margin-top:12px">${esc(saveNote)}</div>` : ''}
+      <button class="primary bigbtn" id="done" style="margin-top:14px">Listo</button>
+    </div>`;
+  $('#done').onclick = () => { S.session = null; S.view = 'today'; render(); };
+}
+
+function nextStreak(cur, lastMs, now) {
+  if (!lastMs) return 1;
+  const d = new Date(now); const l = new Date(lastMs);
+  const day = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const diff = Math.round((day(d) - day(l)) / DAY);
+  if (diff === 0) return cur || 1;   // misma jornada
+  if (diff === 1) return (cur || 0) + 1; // día consecutivo
+  return 1; // se rompió la racha
+}
+
+// Práctica libre (Kit / Oído): una tarjeta a la vez, sin sesión.
+function renderPractice(v, mode) {
+  const pool = PHRASES;
+  const st = renderPractice._st = renderPractice._st || {};
+  if (st.mode !== mode) { st.mode = mode; st.idx = 0; }
+  const phrase = pool[st.idx % pool.length];
+  v.innerHTML = `
+    <div class="topbar"><div class="lbl">${mode === 'speak' ? 'Kit · Pronunciación' : 'Oído · Comprensión'}</div>
+      <div class="mono dim">${(st.idx % pool.length) + 1}/${pool.length}</div></div>
+    <div id="card"></div>
+    <button id="nextCard" style="width:100%;margin-top:8px">Siguiente frase →</button>`;
+  mountCard($('#card'), phrase, mode, () => {}, { inSession: false });
+  $('#nextCard').onclick = () => { st.idx++; renderPractice(v, mode); };
+}
+
+// ---------- Tarjeta de práctica (Kit y Oído comparten motor) ----------
+function mountCard(host, phrase, mode, onGraded, opts) {
+  let meter = null;
+  let recognizer = null;
+  let vu = null;
+  let graded = false;
+
+  const cleanup = () => {
+    if (meter) { meter.stop(); meter = null; }
+    if (recognizer) { recognizer.abort(); recognizer = null; }
+    stopSpeaking();
+  };
+
+  const revealTarget = mode === 'speak';
+  host.innerHTML = `
+    <div class="panel">
+      ${revealTarget
+        ? `<div class="big-en">${esc(phrase.en)}</div>
+           <div class="ph">${esc(phrase.ph)}</div>
+           <div class="es">${esc(phrase.es)}</div>`
+        : `<div class="lbl dim">Escucha y escribe lo que oigas</div>
+           <div class="es" style="margin-top:6px">Pista: ${esc(phrase.es)}</div>`}
+      <div class="row tight" style="margin-top:12px">
+        ${mode === 'speak'
+          ? `<button data-rate="0.6">▸ Lento</button><button data-rate="1.0">▸ Normal</button>`
+          : `<button data-rate="0.55">▸ 0.55</button><button data-rate="0.8">▸ Suave</button><button data-rate="1.0">▸ Normal</button><button data-rate="1.15">▸ Nativo</button>`}
+      </div>
+      <div id="vu"></div>
+      ${mode === 'speak'
+        ? `<button class="primary" id="rec" style="width:100%">🎙 Grabarme</button>`
+        : ``}
+      <div id="typed" class="${mode === 'speak' ? 'hide' : ''}" style="margin-top:10px">
+        <input type="text" id="heard" placeholder="Escribe lo que escuchaste…" autocomplete="off" autocapitalize="off" />
+        <button class="primary" id="checkTyped" style="width:100%;margin-top:8px">Revisar</button>
+      </div>
+      <div id="cardMsg"></div>
+      <div id="result"></div>
+      ${mode === 'speak' ? `
+      <details>
+        <summary>Sin micrófono — escribir</summary>
+        <div style="margin-top:8px">
+          <input type="text" id="typedFallback" placeholder="Escribe la frase…" autocomplete="off" />
+          <button class="primary" id="checkFallback" style="width:100%;margin-top:8px">Revisar</button>
+        </div>
+      </details>` : ''}
+    </div>`;
+
+  vu = makeVU($('#vu', host));
+
+  host.querySelectorAll('[data-rate]').forEach((b) => {
+    b.onclick = () => speak(phrase.en, parseFloat(b.dataset.rate));
+  });
+
+  const grade = (said, viaText) => {
+    if (graded && opts.inSession) return;
+    const res = scoreAttempt(phrase.en, said);
+    graded = true;
+    vu.setScore(res.score);
+    renderResult(res, said);
+    // callback para sesiones (avanza y persiste)
+    if (opts.inSession) {
+      // pequeño respiro para que vea el resultado
+      const nextBtn = document.createElement('button');
+      nextBtn.className = 'primary'; nextBtn.style.cssText = 'width:100%;margin-top:12px';
+      nextBtn.textContent = 'Continuar →';
+      $('#result', host).appendChild(nextBtn);
+      nextBtn.onclick = () => { cleanup(); onGraded({ phraseId: phrase.id, mode, score: res.score, missedWords: res.missedWords, transcript: said }); };
+    }
+  };
+
+  function renderResult(res, said) {
+    const words = res.words.map((x) => `<span class="${x.ok ? 'w-ok' : 'w-bad'}">${esc(x.w)}</span>`).join(' ');
+    const heardLine = said ? `<div class="dim mono" style="margin-top:6px">Se escuchó: ${esc(said)}</div>` : '';
+    $('#result', host).innerHTML = `
+      <div class="center" style="margin-top:10px"><span class="scorebadge">${res.score}%</span></div>
+      ${!revealTarget ? `<div class="big-en" style="margin-top:8px">${esc(phrase.en)}</div><div class="ph">${esc(phrase.ph)}</div>` : ''}
+      <div class="words">${words}</div>
+      ${heardLine}`;
+  }
+
+  // Grabación por voz (Kit).
+  const recBtn = $('#rec', host);
+  if (recBtn) {
+    let recording = false;
+    recBtn.onclick = async () => {
+      if (!recognitionSupported()) {
+        $('#cardMsg', host).innerHTML = `<div class="banner warn">Este navegador no reconoce voz. Usa el cuadro de texto de abajo.</div>`;
+        host.querySelector('details').open = true;
+        return;
+      }
+      if (recording) { // detener
+        recording = false; recBtn.textContent = '🎙 Grabarme'; recBtn.classList.remove('danger');
+        if (recognizer) recognizer.abort();
+        if (meter) { meter.stop(); meter = null; }
+        return;
+      }
+      $('#cardMsg', host).innerHTML = '';
+      try {
+        meter = new MicMeter((lvl) => vu.setLevel(lvl));
+        await meter.start();
+      } catch (e) {
+        $('#cardMsg', host).innerHTML = `<div class="banner err">${esc(speechErrorMessage('not-allowed'))}</div>`;
+        host.querySelector('details').open = true;
+        return;
+      }
+      recording = true; recBtn.textContent = '■ Detener'; recBtn.classList.add('danger');
+      recognizer = createRecognizer({
+        onResult: (text) => { grade(text, false); },
+        onError: (code) => {
+          $('#cardMsg', host).innerHTML = `<div class="banner err">${esc(speechErrorMessage(code))}</div>`;
+          if (code === 'not-allowed' || code === 'audio-capture') host.querySelector('details').open = true;
+        },
+        onEnd: () => {
+          recording = false; recBtn.textContent = '🎙 Grabarme'; recBtn.classList.remove('danger');
+          if (meter) { meter.stop(); meter = null; }
+        },
+      });
+      recognizer.start();
+    };
+  }
+
+  // Revisar por texto (Oído + fallback Kit).
+  const checkTyped = $('#checkTyped', host);
+  if (checkTyped) checkTyped.onclick = () => grade($('#heard', host).value, true);
+  const heardInput = $('#heard', host);
+  if (heardInput) heardInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') grade(heardInput.value, true); });
+  const checkFallback = $('#checkFallback', host);
+  if (checkFallback) checkFallback.onclick = () => grade($('#typedFallback', host).value, true);
+
+  // Limpieza al desmontar la vista.
+  host._cleanup = cleanup;
+}
+
+// ---------- CHARLA ----------
+function renderCharla(v) {
+  const st = renderCharla._st = renderCharla._st || { scen: null, history: [] };
+  if (!st.scen) {
+    v.innerHTML = `<div class="panel"><h2>Elige un escenario</h2>
+      <div class="row">${SCENARIOS.map((s) => `<button class="grow" data-scen="${esc(s.id)}">${esc(s.name)}</button>`).join('')}</div>
+      <p class="dim" style="margin-top:12px">La IA actúa el personaje y responde en inglés muy simple, con traducción. Si se acaba la cuota gratuita del día, Kit y Oído siguen funcionando siempre.</p>
+    </div>`;
+    v.querySelectorAll('[data-scen]').forEach((b) => b.onclick = () => {
+      st.scen = b.dataset.scen; st.history = []; renderCharla(v);
+    });
+    return;
+  }
+
+  const scen = scenarioById(st.scen);
+  v.innerHTML = `
+    <div class="topbar"><div class="lbl">Charla · ${esc(scen.name)}</div><button id="changeScen">Cambiar</button></div>
+    <div id="thread"></div>
+    <div id="charlaMsg"></div>
+    <div id="chips" class="chips"></div>
+    <div class="row tight">
+      <input type="text" id="say" class="grow" placeholder="Escribe o habla en inglés…" autocomplete="off" />
+      <button id="micSay" title="Hablar">🎙</button>
+      <button class="primary" id="send">Enviar</button>
+    </div>`;
+  $('#changeScen').onclick = () => { st.scen = null; renderCharla(v); };
+
+  const thread = $('#thread', v);
+  const drawThread = () => {
+    thread.innerHTML = st.history.map((m) => {
+      if (m.role === 'user') return `<div class="msg me">${esc(m.text)}</div>`;
+      const c = m.correction;
+      const corr = c && c.better
+        ? `<div class="correction"><div class="c-better">✓ ${esc(c.better)}</div><div class="c-why">${esc(c.why)}</div></div>` : '';
+      return `${corr}<div class="msg ai">${esc(m.reply)}
+        ${m.reply_es ? `<div class="r-es">${esc(m.reply_es)}</div>` : ''}
+        <button class="chip" data-say-slow="${esc(m.reply)}" style="margin-top:8px">▸ Repetir lento</button></div>`;
+    }).join('');
+    thread.querySelectorAll('[data-say-slow]').forEach((b) => b.onclick = () => speak(b.dataset.saySlow, 0.7));
+    thread.scrollIntoView(false);
+  };
+  const drawChips = (options) => {
+    const chips = $('#chips', v);
+    chips.innerHTML = (options || []).map((o) => `<button class="chip" data-opt="${esc(o)}">${esc(o)}</button>`).join('');
+    chips.querySelectorAll('[data-opt]').forEach((b) => b.onclick = () => { $('#say', v).value = b.dataset.opt; sendMsg(); });
+  };
+
+  async function sendMsg(seed) {
+    const input = $('#say', v);
+    const text = seed || input.value.trim();
+    if (!text && !seed && st.history.length) return;
+    if (text) st.history.push({ role: 'user', text });
+    input.value = '';
+    drawThread();
+    $('#charlaMsg', v).innerHTML = `<div class="dim"><span class="spinner"></span> Pensando…</div>`;
+    $('#chips', v).innerHTML = '';
+
+    if (!isOnline()) {
+      $('#charlaMsg', v).innerHTML = `<div class="banner warn">Charla necesita internet. Kit y Oído funcionan sin conexión.</div>`;
+      return;
+    }
+    try {
+      const data = await callChat(scen, st.history);
+      st.history.push({ role: 'model', reply: data.reply, reply_es: data.reply_es, correction: data.correction });
+      $('#charlaMsg', v).innerHTML = '';
+      drawThread();
+      drawChips(data.options);
+    } catch (e) {
+      $('#charlaMsg', v).innerHTML = `<div class="banner err">${esc(e.message || 'Error de conexión con la IA.')}</div>`;
+    }
+  }
+
+  $('#send', v).onclick = () => sendMsg();
+  $('#say', v).addEventListener('keydown', (e) => { if (e.key === 'Enter') sendMsg(); });
+  $('#micSay', v).onclick = () => {
+    if (!recognitionSupported()) { $('#charlaMsg', v).innerHTML = `<div class="banner warn">Este navegador no reconoce voz. Escribe tu respuesta.</div>`; return; }
+    const r = createRecognizer({
+      onResult: (t) => { $('#say', v).value = t; },
+      onError: (code) => { $('#charlaMsg', v).innerHTML = `<div class="banner err">${esc(speechErrorMessage(code))}</div>`; },
+    });
+    r.start();
+  };
+
+  drawThread();
+  if (!st.history.length) sendMsg(); // saludo inicial del personaje
+}
+
+async function callChat(scen, history) {
+  // Solo los últimos 12 mensajes para no gastar la cuota.
+  const trimmed = history.slice(-12).map((m) => ({
+    role: m.role === 'user' ? 'user' : 'model',
+    text: m.role === 'user' ? m.text : (m.reply || ''),
+  }));
+  const res = await fetch('/api/chat', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ persona: scen.persona, messages: trimmed }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(data && data.error ? data.error : 'La IA no está disponible ahora.');
+  }
+  return {
+    reply: data.reply || '…',
+    reply_es: data.reply_es || '',
+    correction: data.correction || null,
+    options: Array.isArray(data.options) ? data.options : [],
+  };
+}
+
+// ---------- FAMILIA ----------
+async function renderFamilia(v) {
+  v.innerHTML = `<div class="panel"><span class="spinner"></span> Cargando…</div>`;
+  const familyId = S.userDoc && S.userDoc.familyId;
+
+  if (!familyId) {
+    v.innerHTML = `
+      <div class="panel">
+        <h2>Grupo familiar</h2>
+        <p class="dim">Cada quien tiene su propio progreso. El marcador solo muestra frases dominadas y racha — nunca tus grabaciones.</p>
+        <button class="primary bigbtn" id="createFam">Crear un grupo</button>
+        <div class="row tight" style="margin-top:14px">
+          <input type="text" id="joinCode" class="grow" placeholder="Código de 6 letras" maxlength="6" autocapitalize="characters" style="text-transform:uppercase" />
+          <button id="joinFam">Unirme</button>
+        </div>
+        <div id="famMsg"></div>
+      </div>`;
+    $('#createFam').onclick = async () => {
+      const name = prompt('Nombre del grupo:', 'Familia ' + (S.user.displayName || '').split(' ')[0]);
+      if (name === null) return;
+      try {
+        const { code } = await store.createFamily(S.user, name);
+        S.userDoc.familyId = code;
+        alert('Grupo creado. Comparte este código: ' + code);
+        renderFamilia(v);
+      } catch (e) { $('#famMsg').innerHTML = `<div class="banner err">${esc(e.message)}</div>`; }
+    };
+    $('#joinFam').onclick = async () => {
+      try {
+        const { familyId: fid } = await store.joinFamily(S.user, $('#joinCode').value);
+        S.userDoc.familyId = fid;
+        renderFamilia(v);
+      } catch (e) { $('#famMsg').innerHTML = `<div class="banner err">${esc(e.message)}</div>`; }
+    };
+    return;
+  }
+
+  let fam = null, rows = [];
+  try {
+    fam = await store.getFamily(familyId);
+    rows = await store.getScoreboard(familyId);
+  } catch (e) {
+    v.innerHTML = `<div class="banner err">No se pudo cargar el grupo. ${esc(isOnline() ? '' : 'Revisa tu conexión.')}</div>`;
+    return;
+  }
+
+  v.innerHTML = `
+    <div class="panel">
+      <h2>${esc(fam ? fam.name : 'Mi familia')}</h2>
+      <div class="dim">Código para invitar: <span class="kbd">${esc(familyId)}</span></div>
+    </div>
+    <div class="panel">
+      <table>
+        <thead><tr><th>Miembro</th><th style="text-align:right">Dominadas</th><th style="text-align:right">Racha</th></tr></thead>
+        <tbody>${rows.map((r) => `<tr>
+          <td><div class="member">${r.photoURL ? `<img src="${esc(r.photoURL)}" alt="" referrerpolicy="no-referrer"/>` : '<div class="avatar" style="width:26px;height:26px"></div>'}<span>${esc(r.displayName || 'Sin nombre')}</span></div></td>
+          <td class="num">${Number(r.masteredCount || 0)}</td>
+          <td class="num">${Number(r.streak || 0)}</td>
+        </tr>`).join('')}</tbody>
+      </table>
+    </div>`;
+}
+
+// El botón de punto débil vive en HOY pero se enlaza globalmente tras render.
+document.addEventListener('click', (e) => {
+  if (e.target && e.target.id === 'drillWeak') {
+    const weak = currentWeakSpot();
+    if (weak) startWeakDrill(weak.key);
+  }
+});
+
+// ---------- arranque ----------
+primeVoices();
+store.resolveRedirect();
+
+window.addEventListener('online', () => { if (S.user) render(); });
+window.addEventListener('offline', () => { if (S.user) render(); });
+
+store.onAuth(async (user) => {
+  S.user = user;
+  if (!user) { render(); return; }
+  try {
+    S.userDoc = await store.ensureUserDoc(user);
+    S.cards = await store.loadCards(user.uid);
+  } catch (e) {
+    S.userDoc = S.userDoc || { streak: 0, masteredCount: 0, familyId: null };
+  }
+  S.view = 'today';
+  render();
+});
+
+// Registro del service worker (PWA instalable, funciona en modo avión).
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,13 @@
+# Dependencias y artefactos
+node_modules/
+dist/
+.DS_Store
+
+# NUNCA subir llaves ni secretos
+.env
+.env.*
+.dev.vars
+*.key
+*.pem
+secrets.*
+serviceAccount*.json

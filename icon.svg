@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <!-- Soundcheck: consola de audio. Fondo negro de rack + medidor VU. -->
+  <rect width="512" height="512" rx="96" fill="#14161B"/>
+  <rect x="56" y="56" width="400" height="400" rx="40" fill="#1C2028" stroke="#2E3542" stroke-width="4"/>
+  <!-- 5 barras tipo ecualizador; verde abajo, ámbar medio, rojo arriba -->
+  <g>
+    <!-- barra 1 (nivel 0.45) -->
+    <rect x="104" y="288" width="48" height="112" rx="8" fill="#7FD1AE"/>
+    <!-- barra 2 (nivel 0.70) -->
+    <rect x="168" y="216" width="48" height="184" rx="8" fill="#7FD1AE"/>
+    <rect x="168" y="216" width="48" height="70" rx="8" fill="#F5B342"/>
+    <!-- barra 3 (nivel 0.95) -->
+    <rect x="232" y="128" width="48" height="272" rx="8" fill="#7FD1AE"/>
+    <rect x="232" y="128" width="48" height="150" rx="8" fill="#F5B342"/>
+    <rect x="232" y="128" width="48" height="56" rx="8" fill="#E8564A"/>
+    <!-- barra 4 (nivel 0.60) -->
+    <rect x="296" y="248" width="48" height="152" rx="8" fill="#7FD1AE"/>
+    <rect x="296" y="248" width="48" height="44" rx="8" fill="#F5B342"/>
+    <!-- barra 5 (nivel 0.80) -->
+    <rect x="360" y="184" width="48" height="216" rx="8" fill="#7FD1AE"/>
+    <rect x="360" y="184" width="48" height="96" rx="8" fill="#F5B342"/>
+  </g>
+</svg>
