@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: Validar y probar
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Instalar Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Pruebas (LCS + Leitner + contenido)
+        run: npm test
+
+      - name: node --check en todos los módulos JS
+        run: |
+          for f in js/*.js functions/api/chat.js scripts/gen-icons.mjs tests/run.mjs; do
+            echo "check $f"
+            node --check "$f"
+          done
+
+      - name: Validar el bloque JS inline de index.html
+        run: |
+          node -e '
+            const fs = require("fs");
+            const html = fs.readFileSync("index.html", "utf8");
+            const m = html.match(/<script type="module">([\s\S]*?)<\/script>/);
+            if (!m) { console.error("No se encontró el bloque <script type=module>"); process.exit(1); }
+            fs.writeFileSync("inline.check.mjs", m[1]);
+          '
+          node --check inline.check.mjs
+          rm -f inline.check.mjs
+
+      - name: Validar manifest.json
+        run: node -e 'JSON.parse(require("fs").readFileSync("manifest.json","utf8")); console.log("manifest.json OK")'
+
+      - name: Verificar que los iconos se regeneran sin error
+        run: node scripts/gen-icons.mjs
