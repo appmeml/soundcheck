@@ -22,10 +22,11 @@ const ASSETS = [
 ];
 
 self.addEventListener('install', (event) => {
+  // NO llamamos skipWaiting aquí: la app muestra el botón "Actualizar" y decide
+  // cuándo aplicar la nueva versión (para poder cerrar sesión primero).
   event.waitUntil(
     caches.open(CACHE)
       .then((c) => c.addAll(ASSETS.filter((v, i, a) => a.indexOf(v) === i)))
-      .then(() => self.skipWaiting())
   );
 });
 
@@ -35,6 +36,11 @@ self.addEventListener('activate', (event) => {
       .then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
       .then(() => self.clients.claim())
   );
+});
+
+// La página pide aplicar la versión nueva al tocar "Actualizar".
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') self.skipWaiting();
 });
 
 self.addEventListener('fetch', (event) => {

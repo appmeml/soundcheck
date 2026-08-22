@@ -191,6 +191,72 @@
   .spinner { display:inline-block; width:16px;height:16px;border:2px solid var(--edge);border-top-color:var(--amber);border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle }
   @keyframes spin { to { transform: rotate(360deg); } }
   @media (prefers-reduced-motion: reduce) { .spinner { animation: none; } }
+
+  /* Botón Atrás */
+  .back {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: var(--panel2); border: 1px solid var(--edge); border-radius: var(--r);
+    padding: 8px 12px; font-family: var(--label); text-transform: uppercase;
+    letter-spacing: .1em; font-size: 12px; color: var(--text);
+  }
+  .back .chev { font-size: 16px; line-height: 1; }
+  .viewhead { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+  .viewhead .vtitle { font-family: var(--label); text-transform: uppercase; letter-spacing: .14em; font-size: 13px; color: var(--dim); }
+
+  /* Banner de actualización */
+  .update-bar {
+    position: fixed; left: 0; right: 0; top: 0; z-index: 50;
+    background: var(--amber); color: #1a1408;
+    display: flex; align-items: center; gap: 10px; justify-content: space-between;
+    padding: calc(8px + env(safe-area-inset-top)) 14px 8px;
+    font-family: var(--body); font-size: 14px; font-weight: 600;
+  }
+  .update-bar button {
+    background: #1a1408; color: var(--amber); border: none; border-radius: 8px;
+    padding: 8px 14px; font-weight: 700; font-size: 14px; white-space: nowrap;
+  }
+
+  /* Botón instalar */
+  .install-btn {
+    display: inline-flex; align-items: center; gap: 8px; justify-content: center;
+    width: 100%; background: var(--panel2); border: 1px solid var(--amber);
+    color: var(--amber); border-radius: var(--r); padding: 14px; font-weight: 600;
+    font-size: 15px;
+  }
+
+  /* Modal simple (instrucciones de instalación en iPhone) */
+  .modal-bg {
+    position: fixed; inset: 0; z-index: 60; background: rgba(0,0,0,.6);
+    display: flex; align-items: center; justify-content: center; padding: 20px;
+  }
+  .modal {
+    background: var(--panel); border: 1px solid var(--edge); border-radius: 14px;
+    padding: 20px; max-width: 420px; width: 100%;
+  }
+  .modal h3 { font-family: var(--label); text-transform: uppercase; letter-spacing: .12em; margin: 0 0 12px; }
+  .modal ol { padding-left: 20px; line-height: 1.6; }
+
+  /* Avatar de IA en Charla */
+  .ai-avatar-wrap { display: flex; flex-direction: column; align-items: center; gap: 6px; margin: 4px 0 14px; }
+  .ai-avatar { position: relative; width: 116px; height: 116px; }
+  .ai-avatar svg { width: 100%; height: 100%; display: block; }
+  .ai-avatar .ring {
+    position: absolute; inset: -6px; border-radius: 50%;
+    border: 2px solid var(--amber); opacity: 0;
+  }
+  .ai-avatar.speaking .ring { animation: pulsering 1.1s ease-out infinite; }
+  @keyframes pulsering {
+    0% { opacity: .7; transform: scale(.98); }
+    100% { opacity: 0; transform: scale(1.14); }
+  }
+  .ai-avatar .mouth { transform-origin: center; transform-box: fill-box; }
+  .ai-avatar.speaking .mouth { animation: talk .28s ease-in-out infinite alternate; }
+  @keyframes talk { from { transform: scaleY(.5); } to { transform: scaleY(1.25); } }
+  .ai-badge { display: inline-flex; align-items: center; gap: 6px; color: var(--dim); font-size: 13px; }
+  .ai-badge .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); display: inline-block; }
+  @media (prefers-reduced-motion: reduce) {
+    .ai-avatar.speaking .ring, .ai-avatar.speaking .mouth, .update-bar { animation: none; }
+  }
 </style>
 </head>
 <body>
@@ -230,6 +296,27 @@ function daysUntilTrip() {
 }
 
 function isOnline() { return navigator.onLine !== false; }
+
+// ¿La app corre instalada (pantalla de inicio) y no en el navegador?
+function isStandalone() {
+  return window.matchMedia && window.matchMedia('(display-mode: standalone)').matches
+    || window.navigator.standalone === true;
+}
+function isIOSDevice() {
+  const ua = navigator.userAgent || '';
+  return /iP(hone|ad|od)/.test(ua)
+    || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+}
+
+// Cabecera con botón Atrás (regresa a HOY por defecto).
+function backHeader(title, onBack) {
+  const head = document.createElement('div');
+  head.className = 'viewhead';
+  head.innerHTML = `<button class="back" type="button"><span class="chev" aria-hidden="true">‹</span> Atrás</button>
+    <span class="vtitle">${esc(title)}</span>`;
+  head.querySelector('.back').onclick = onBack || (() => { S.view = 'today'; render(); });
+  return head;
+}
 
 // ---------- estado ----------
 const S = {
@@ -294,6 +381,13 @@ function render() {
   wireTopbar();
   wireNav();
   renderView();
+  wireInstallButtons();
+  refreshInstallButtons();
+}
+
+// Enlaza cualquier botón [data-install] presente tras el render.
+function wireInstallButtons() {
+  document.querySelectorAll('[data-install]').forEach((b) => { b.onclick = doInstall; });
 }
 
 function topbar() {
@@ -355,6 +449,7 @@ function renderLogin() {
       <p class="dim">Práctica de inglés hablado y de oído para tu viaje.</p>
       <div id="loginErr"></div>
       <button class="primary bigbtn" id="login">Entrar con Google</button>
+      <button class="install-btn hide" data-install style="margin-top:12px">⤓ Instalar app en mi teléfono</button>
     </div>`;
   $('#login').onclick = async () => {
     $('#loginErr').innerHTML = '';
@@ -366,6 +461,8 @@ function renderLogin() {
       $('#loginErr').innerHTML = `<div class="banner err">${esc(msg)}</div>`;
     }
   };
+  wireInstallButtons();
+  refreshInstallButtons();
 }
 
 // ---------- HOY ----------
@@ -404,7 +501,8 @@ function renderToday(v) {
         <button class="grow" data-nav2="oido">Oído · comprensión</button>
         <button class="grow" data-nav2="charla">Charla con IA</button>
       </div>
-    </div>`;
+    </div>
+    <button class="install-btn hide" data-install style="margin-top:4px">⤓ Instalar app en mi teléfono</button>`;
 
   $('#startSession').onclick = startDailySession;
   v.querySelectorAll('[data-nav2]').forEach((b) => b.onclick = () => { S.view = b.dataset.nav2; render(); });
@@ -444,9 +542,19 @@ function renderSessionCard() {
   const item = sess.plan[sess.i];
   const phrase = phraseById(item.phraseId);
   root.innerHTML = `<div class="app-inner">
-    <div class="topbar"><div class="lbl">${esc(sess.title)}</div><div class="mono dim">${sess.i + 1}/${sess.plan.length}</div></div>
+    <div class="topbar">
+      <button class="back" id="exitSession" type="button"><span class="chev" aria-hidden="true">‹</span> Salir</button>
+      <div class="lbl">${esc(sess.title)}</div>
+      <div class="mono dim">${sess.i + 1}/${sess.plan.length}</div>
+    </div>
     <div id="card"></div>
   </div>`;
+  $('#exitSession').onclick = () => {
+    if (sess.results.length === 0) { S.session = null; S.view = 'today'; render(); return; }
+    if (confirm('¿Salir de la sesión? Se guardará lo que ya practicaste.')) {
+      finishSession();
+    }
+  };
   mountCard($('#card'), phrase, item.mode, (result) => {
     sess.results.push(result);
     const prev = S.cards[phrase.id] || newCard(phrase.id);
@@ -519,13 +627,20 @@ function renderPractice(v, mode) {
   const st = renderPractice._st = renderPractice._st || {};
   if (st.mode !== mode) { st.mode = mode; st.idx = 0; }
   const phrase = pool[st.idx % pool.length];
-  v.innerHTML = `
-    <div class="topbar"><div class="lbl">${mode === 'speak' ? 'Kit · Pronunciación' : 'Oído · Comprensión'}</div>
-      <div class="mono dim">${(st.idx % pool.length) + 1}/${pool.length}</div></div>
-    <div id="card"></div>
-    <button id="nextCard" style="width:100%;margin-top:8px">Siguiente frase →</button>`;
-  mountCard($('#card'), phrase, mode, () => {}, { inSession: false });
-  $('#nextCard').onclick = () => { st.idx++; renderPractice(v, mode); };
+  v.innerHTML = '';
+  v.appendChild(backHeader(mode === 'speak' ? 'Kit · Pronunciación' : 'Oído · Comprensión'));
+  const meta = document.createElement('div');
+  meta.className = 'row'; meta.style.cssText = 'justify-content:flex-end;margin:-6px 0 8px';
+  meta.innerHTML = `<span class="mono dim">${(st.idx % pool.length) + 1}/${pool.length}</span>`;
+  v.appendChild(meta);
+  const cardHost = document.createElement('div');
+  v.appendChild(cardHost);
+  const nextBtn = document.createElement('button');
+  nextBtn.id = 'nextCard'; nextBtn.style.cssText = 'width:100%;margin-top:8px';
+  nextBtn.textContent = 'Siguiente frase →';
+  v.appendChild(nextBtn);
+  mountCard(cardHost, phrase, mode, () => {}, { inSession: false });
+  nextBtn.onclick = () => { if (cardHost._cleanup) cardHost._cleanup(); st.idx++; renderPractice(v, mode); };
 }
 
 // ---------- Tarjeta de práctica (Kit y Oído comparten motor) ----------
@@ -719,13 +834,39 @@ function mountCard(host, phrase, mode, onGraded, opts) {
 }
 
 // ---------- CHARLA ----------
+// Color de acento del avatar por escenario.
+const SCEN_ACCENT = {
+  airport: '#6FA8FF', hotel: '#F5B342', restaurant: '#7FD1AE',
+  parks: '#E58AC9', uber: '#5FC9C9', shopping: '#F2915B',
+};
+function robotAvatarSVG(accent) {
+  return `<svg viewBox="0 0 120 120" role="img" aria-label="Tutor de inglés">
+    <circle cx="60" cy="60" r="56" fill="#232833" stroke="#2E3542" stroke-width="2"/>
+    <line x1="60" y1="30" x2="60" y2="21" stroke="${accent}" stroke-width="3" stroke-linecap="round"/>
+    <circle cx="60" cy="18" r="3.4" fill="${accent}"/>
+    <circle cx="28" cy="60" r="9" fill="${accent}"/>
+    <circle cx="92" cy="60" r="9" fill="${accent}"/>
+    <path d="M28 60 A32 32 0 0 1 92 60" fill="none" stroke="${accent}" stroke-width="3"/>
+    <rect x="34" y="32" width="52" height="50" rx="15" fill="#2c3442" stroke="${accent}" stroke-width="2"/>
+    <rect x="40" y="40" width="40" height="34" rx="9" fill="#10131a"/>
+    <circle cx="51" cy="55" r="4.4" fill="${accent}"/>
+    <circle cx="69" cy="55" r="4.4" fill="${accent}"/>
+    <rect class="mouth" x="52" y="64" width="16" height="4.5" rx="2.2" fill="${accent}"/>
+    <path d="M28 68 Q40 92 58 84" fill="none" stroke="${accent}" stroke-width="2.4" stroke-linecap="round"/>
+    <circle cx="58" cy="84" r="3.2" fill="${accent}"/>
+  </svg>`;
+}
 function renderCharla(v) {
   const st = renderCharla._st = renderCharla._st || { scen: null, history: [] };
   if (!st.scen) {
-    v.innerHTML = `<div class="panel"><h2>Elige un escenario</h2>
+    v.innerHTML = '';
+    v.appendChild(backHeader('Charla'));
+    const p = document.createElement('div');
+    p.className = 'panel';
+    p.innerHTML = `<h2>Elige un escenario</h2>
       <div class="row">${SCENARIOS.map((s) => `<button class="grow" data-scen="${esc(s.id)}">${esc(s.name)}</button>`).join('')}</div>
-      <p class="dim" style="margin-top:12px">La IA actúa el personaje y responde en inglés muy simple, con traducción. Si se acaba la cuota gratuita del día, Kit y Oído siguen funcionando siempre.</p>
-    </div>`;
+      <p class="dim" style="margin-top:12px">La IA actúa el personaje y responde en inglés muy simple, con traducción. Si se acaba la cuota gratuita del día, Kit y Oído siguen funcionando siempre.</p>`;
+    v.appendChild(p);
     v.querySelectorAll('[data-scen]').forEach((b) => b.onclick = () => {
       st.scen = b.dataset.scen; st.history = []; renderCharla(v);
     });
@@ -733,8 +874,17 @@ function renderCharla(v) {
   }
 
   const scen = scenarioById(st.scen);
+  const accent = SCEN_ACCENT[scen.id] || '#F5B342';
   v.innerHTML = `
-    <div class="topbar"><div class="lbl">Charla · ${esc(scen.name)}</div><button id="changeScen">Cambiar</button></div>
+    <div class="viewhead">
+      <button class="back" id="backCharla" type="button"><span class="chev" aria-hidden="true">‹</span> Atrás</button>
+      <span class="vtitle">Charla</span>
+      <button id="changeScen" style="margin-left:auto">Cambiar</button>
+    </div>
+    <div class="ai-avatar-wrap">
+      <div class="ai-avatar" id="aiAvatar"><div class="ring"></div>${robotAvatarSVG(accent)}</div>
+      <div class="ai-badge"><span class="dot"></span> ${esc(scen.name)} · en línea</div>
+    </div>
     <div id="thread"></div>
     <div id="charlaMsg"></div>
     <div id="chips" class="chips"></div>
@@ -744,6 +894,15 @@ function renderCharla(v) {
       <button class="primary" id="send">Enviar</button>
     </div>`;
   $('#changeScen').onclick = () => { st.scen = null; renderCharla(v); };
+  $('#backCharla').onclick = () => { S.view = 'today'; render(); };
+
+  // Habla y anima al avatar mientras suena la voz.
+  const avatarEl = $('#aiAvatar', v);
+  const speakAvatar = async (text, rate) => {
+    if (avatarEl) avatarEl.classList.add('speaking');
+    try { await speak(text, rate); }
+    finally { if (avatarEl) avatarEl.classList.remove('speaking'); }
+  };
 
   const thread = $('#thread', v);
   const drawThread = () => {
@@ -754,9 +913,12 @@ function renderCharla(v) {
         ? `<div class="correction"><div class="c-better">✓ ${esc(c.better)}</div><div class="c-why">${esc(c.why)}</div></div>` : '';
       return `${corr}<div class="msg ai">${esc(m.reply)}
         ${m.reply_es ? `<div class="r-es">${esc(m.reply_es)}</div>` : ''}
-        <button class="chip" data-say-slow="${esc(m.reply)}" style="margin-top:8px">▸ Repetir lento</button></div>`;
+        <div class="row tight" style="margin-top:8px">
+          <button class="chip" data-say="${esc(m.reply)}" data-rate="1">▸ Escuchar</button>
+          <button class="chip" data-say="${esc(m.reply)}" data-rate="0.7">▸ Repetir lento</button>
+        </div></div>`;
     }).join('');
-    thread.querySelectorAll('[data-say-slow]').forEach((b) => b.onclick = () => speak(b.dataset.saySlow, 0.7));
+    thread.querySelectorAll('[data-say]').forEach((b) => b.onclick = () => speakAvatar(b.dataset.say, parseFloat(b.dataset.rate)));
     thread.scrollIntoView(false);
   };
   const drawChips = (options) => {
@@ -785,6 +947,7 @@ function renderCharla(v) {
       $('#charlaMsg', v).innerHTML = '';
       drawThread();
       drawChips(data.options);
+      speakAvatar(data.reply, 1.0); // el avatar "habla" la respuesta
     } catch (e) {
       $('#charlaMsg', v).innerHTML = `<div class="banner err">${esc(e.message || 'Error de conexión con la IA.')}</div>`;
     }
@@ -886,6 +1049,7 @@ async function renderFamilia(v) {
         </div>
         <div id="famMsg"></div>
       </div>`;
+    v.insertAdjacentElement('afterbegin', backHeader('Familia'));
     $('#createFam').onclick = async () => {
       const name = prompt('Nombre del grupo:', 'Familia ' + (S.user.displayName || '').split(' ')[0]);
       if (name === null) return;
@@ -930,6 +1094,7 @@ async function renderFamilia(v) {
         </tr>`).join('')}</tbody>
       </table>
     </div>`;
+  v.insertAdjacentElement('afterbegin', backHeader('Familia'));
 }
 
 // El botón de punto débil vive en HOY pero se enlaza globalmente tras render.
@@ -960,9 +1125,99 @@ store.onAuth(async (user) => {
   render();
 });
 
+// ---------- Instalar app (PWA) ----------
+let deferredInstall = null;
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredInstall = e;
+  refreshInstallButtons();
+});
+window.addEventListener('appinstalled', () => {
+  deferredInstall = null;
+  refreshInstallButtons();
+});
+
+function canShowInstall() {
+  if (isStandalone()) return false;         // ya instalada
+  return !!deferredInstall || isIOSDevice(); // Android: prompt nativo; iPhone: instrucciones
+}
+function refreshInstallButtons() {
+  document.querySelectorAll('[data-install]').forEach((b) => {
+    b.classList.toggle('hide', !canShowInstall());
+  });
+}
+async function doInstall() {
+  if (deferredInstall) {
+    deferredInstall.prompt();
+    try { await deferredInstall.userChoice; } catch (_) {}
+    deferredInstall = null;
+    refreshInstallButtons();
+    return;
+  }
+  if (isIOSDevice()) showIOSInstallHelp();
+}
+function showIOSInstallHelp() {
+  const bg = document.createElement('div');
+  bg.className = 'modal-bg';
+  bg.innerHTML = `<div class="modal">
+    <h3>Instalar en iPhone</h3>
+    <ol>
+      <li>Toca el botón <b>Compartir</b> (el cuadro con la flecha ↑) abajo en Safari.</li>
+      <li>Desliza y toca <b>“Agregar a inicio”</b>.</li>
+      <li>Toca <b>Agregar</b>. La app quedará como un ícono más.</li>
+    </ol>
+    <button class="primary" style="width:100%;margin-top:8px" id="closeHelp">Entendido</button>
+  </div>`;
+  document.body.appendChild(bg);
+  const close = () => bg.remove();
+  bg.querySelector('#closeHelp').onclick = close;
+  bg.onclick = (e) => { if (e.target === bg) close(); };
+}
+
+// ---------- Aviso de actualización ----------
+let updateShown = false;
+let updating = false; // true solo cuando el usuario tocó "Actualizar"
+function showUpdateBar(registration) {
+  if (updateShown) return;
+  updateShown = true;
+  const bar = document.createElement('div');
+  bar.className = 'update-bar';
+  bar.innerHTML = `<span>Hay una nueva versión de Soundcheck.</span>
+    <button type="button">Actualizar</button>`;
+  document.body.appendChild(bar);
+  bar.querySelector('button').onclick = async () => {
+    updating = true;
+    bar.querySelector('button').textContent = 'Actualizando…';
+    // Cierra sesión en cada actualización (requisito) y aplica la versión nueva.
+    try { await store.signOutUser(); } catch (_) {}
+    const waiting = registration && registration.waiting;
+    if (waiting) waiting.postMessage({ type: 'SKIP_WAITING' });
+    else location.reload();
+  };
+}
+
 // Registro del service worker (PWA instalable, funciona en modo avión).
 if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    // Solo recargamos si el usuario pidió actualizar; así los usuarios nuevos
+    // no sufren una recarga sorpresa en su primer arranque (clients.claim).
+    if (updating) location.reload();
+  });
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').then((reg) => {
+      // Ya hay una versión nueva esperando.
+      if (reg.waiting && navigator.serviceWorker.controller) showUpdateBar(reg);
+      reg.addEventListener('updatefound', () => {
+        const nw = reg.installing;
+        if (!nw) return;
+        nw.addEventListener('statechange', () => {
+          if (nw.state === 'installed' && navigator.serviceWorker.controller) showUpdateBar(reg);
+        });
+      });
+      // Busca actualizaciones al abrir.
+      reg.update().catch(() => {});
+    }).catch(() => {});
+  });
 }
 </script>
 </body>
