@@ -343,5 +343,68 @@ await testA('chat: si un modelo da 404, prueba el siguiente automáticamente', a
   } finally { globalThis.fetch = orig; }
 });
 
+await testA('chat: si un modelo está saturado (503), rota a otro', async () => {
+  const orig = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = async () => {
+    calls++;
+    if (calls === 1) return { status: 503, ok: false, async text() { return JSON.stringify({ error: { status: 'UNAVAILABLE', message: 'The model is overloaded. Please try again later.' } }); } };
+    return { status: 200, ok: true, async text() { return JSON.stringify({ candidates: [{ content: { parts: [{ text: '{"reply":"Hello","reply_es":"Hola","correction":null,"options":["a","b","c"]}' }] } }] }); } };
+  };
+  try {
+    const req = { json: async () => ({ persona: 'x', messages: [] }) };
+    const res = await chatPost({ request: req, env: { GEMINI_API_KEY: 'k' } });
+    const body = await res.json();
+    assert.equal(res.status, 200);
+    assert.equal(body.reply, 'Hello');
+    assert.ok(calls >= 2);
+  } finally { globalThis.fetch = orig; }
+});
+
+await testA('chat: si TODO está saturado, responde 503 accionable (sin colgarse)', async () => {
+  const orig = globalThis.fetch;
+  globalThis.fetch = async () => ({ status: 503, ok: false, async text() { return JSON.stringify({ error: { status: 'UNAVAILABLE', message: 'high demand' } }); } });
+  try {
+    const req = { json: async () => ({ persona: 'x', messages: [] }) };
+    const res = await chatPost({ request: req, env: { GEMINI_API_KEY: 'k' } });
+    const body = await res.json();
+    assert.equal(res.status, 503);
+    assert.ok(/demanda|satur/i.test(body.error));
+  } finally { globalThis.fetch = orig; }
+});
+
+await testA('chat: usa Groq de respaldo cuando Gemini está saturado', async () => {
+  const orig = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    if (String(url).includes('groq.com')) {
+      return { status: 200, ok: true, async text() {
+        return JSON.stringify({ choices: [{ message: { content: '{"reply":"Sure!","reply_es":"¡Claro!","correction":null,"options":["a","b","c"]}' } }] });
+      } };
+    }
+    return { status: 503, ok: false, async text() { return JSON.stringify({ error: { status: 'UNAVAILABLE', message: 'overloaded' } }); } };
+  };
+  try {
+    const req = { json: async () => ({ persona: 'x', messages: [{ role: 'user', text: 'hi' }] }) };
+    const res = await chatPost({ request: req, env: { GEMINI_API_KEY: 'k', GROQ_API_KEY: 'g' } });
+    const body = await res.json();
+    assert.equal(res.status, 200);
+    assert.equal(body.reply, 'Sure!');
+  } finally { globalThis.fetch = orig; }
+});
+
+await testA('chat: adapta el nivel (B1) en la instrucción del sistema', async () => {
+  const orig = globalThis.fetch;
+  let sent = null;
+  globalThis.fetch = async (url, opts) => {
+    sent = JSON.parse(opts.body);
+    return { status: 200, ok: true, async text() { return JSON.stringify({ candidates: [{ content: { parts: [{ text: '{"reply":"Hi","reply_es":"Hola","correction":null,"options":["a","b","c"]}' }] } }] }); } };
+  };
+  try {
+    const req = { json: async () => ({ persona: 'x', level: 'B1', messages: [{ role: 'user', text: 'hi' }] }) };
+    await chatPost({ request: req, env: { GEMINI_API_KEY: 'k' } });
+    assert.ok(/INTERMEDIATE \(B1\)/.test(sent.systemInstruction.parts[0].text));
+  } finally { globalThis.fetch = orig; }
+});
+
 console.log(`\nResultado: ${pass} pasaron, ${fail} fallaron.\n`);
 process.exit(fail ? 1 : 0);

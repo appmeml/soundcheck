@@ -1,17 +1,18 @@
-// Proxy hacia Gemini. La llave GEMINI_API_KEY vive SOLO en Cloudflare y nunca
-// llega al navegador. Se ejecuta como Cloudflare Pages Function en /api/chat.
+// Proxy del tutor de conversación. La llave vive SOLO en Cloudflare y nunca
+// llega al navegador. Cloudflare Pages Function en /api/chat.
 //
-// Variables de entorno (Cloudflare Pages → Settings → Environment variables):
+// Diseñado para que la charla FLUYA aunque un modelo esté saturado:
+//   1) Prueba varios modelos Flash de Gemini (rota si uno no existe o está saturado).
+//   2) Reintenta una vez con espera corta si todos están saturados.
+//   3) Si defines GROQ_API_KEY, usa Groq (Llama) como segunda IA de respaldo.
+// El tutor se adapta al nivel del usuario (A1/A2/B1), que evoluciona con su progreso.
+//
+// Variables de entorno (Cloudflare → Settings → Environment variables):
 //   GEMINI_API_KEY  (obligatoria, secreta)
-//   MODEL           (opcional; se prueba primero, luego una lista de respaldo)
-//
-// Los nombres/accesos de modelo cambian seguido. Por eso la app prueba varios
-// modelos Flash del tier gratis en orden hasta encontrar el que tu llave acepta
-// (ver MODEL_FALLBACKS). No necesitas configurar nada; MODEL solo fuerza uno.
+//   MODEL           (opcional; modelo de Gemini a probar primero)
+//   GROQ_API_KEY    (opcional, secreta; segunda IA de respaldo, gratis en groq.com)
+//   GROQ_MODEL      (opcional; por defecto llama-3.3-70b-versatile)
 
-// Lista de modelos a probar en orden. La app prueba cada uno hasta encontrar
-// el que la llave del usuario acepta (los nombres/accesos cambian seguido).
-// Si se define MODEL en Cloudflare, ese se prueba primero.
 const MODEL_FALLBACKS = [
   'gemini-2.0-flash',
   'gemini-2.5-flash',
@@ -19,6 +20,7 @@ const MODEL_FALLBACKS = [
   'gemini-2.0-flash-lite',
   'gemini-2.5-flash-lite',
 ];
+const GROQ_DEFAULT_MODEL = 'llama-3.3-70b-versatile';
 
 function modelCandidates(env) {
   const first = env && env.MODEL;
@@ -28,172 +30,223 @@ function modelCandidates(env) {
   return list;
 }
 
-// ¿El error indica que ESE modelo no existe/está disponible? (para probar el siguiente)
-function isModelNotFound(status, raw) {
-  if (status === 404) return true;
-  try {
-    const e = JSON.parse(raw).error || {};
-    const s = String(e.status || '');
-    const m = String(e.message || '').toLowerCase();
-    return s === 'NOT_FOUND' || m.includes('not found') || m.includes('is not supported') || m.includes('not available');
-  } catch (_) { return false; }
-}
-
 function json(body, status = 200) {
   return new Response(JSON.stringify(body), {
-    status,
-    headers: { 'Content-Type': 'application/json; charset=utf-8' },
+    status, headers: { 'Content-Type': 'application/json; charset=utf-8' },
   });
 }
 
-// El tutor: instrucción de sistema separada de la conversación.
-function systemInstruction(persona) {
-  const role = typeof persona === 'string' && persona.trim()
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// Clasifica la respuesta de Gemini para decidir qué hacer.
+function classify(status, raw) {
+  let s = '', m = '';
+  try { const e = JSON.parse(raw).error || {}; s = String(e.status || ''); m = String(e.message || '').toLowerCase(); } catch (_) {}
+  if (status >= 200 && status < 300) return 'ok';
+  if (status === 429 || s === 'RESOURCE_EXHAUSTED') return 'quota';
+  if (status === 404 || s === 'NOT_FOUND' || m.includes('not found') || m.includes('is not supported') || m.includes('not available')) return 'notfound';
+  if (status === 503 || status === 500 || s === 'UNAVAILABLE' || s === 'INTERNAL' || m.includes('overloaded') || m.includes('high demand') || m.includes('try again')) return 'overloaded';
+  return 'fatal'; // 400/401/403: llave, API deshabilitada, región, etc.
+}
+
+// El tutor, adaptado al nivel. El nivel EVOLUCIONA con el progreso del usuario.
+function systemInstruction(persona, level) {
+  const role = (typeof persona === 'string' && persona.trim())
     ? persona.trim()
-    : 'You are a friendly American helping a traveler practice English.';
+    : 'You are a friendly American helping someone practice spoken English.';
+  const lvl = ({ A1: 'A1', A2: 'A2', B1: 'B1', B2: 'B2' })[String(level || '').toUpperCase()] || 'A1';
+  const byLevel = {
+    A1: 'The learner is a BEGINNER (A1). Reply in VERY simple English, at most 2 short sentences, basic words only.',
+    A2: 'The learner is ELEMENTARY (A2). Reply in simple English, 2-3 short sentences, common everyday vocabulary.',
+    B1: 'The learner is INTERMEDIATE (B1). Reply in natural but clear English, 2-4 sentences. Introduce a few new useful words.',
+    B2: 'The learner is UPPER-INTERMEDIATE (B2). Reply naturally, 3-5 sentences. Use richer vocabulary and idioms, but stay clear.',
+  };
   return [
     role,
-    'The user is a native Spanish speaker from Ecuador at level A1 (beginner) practicing for a trip to Orlando and Miami.',
+    'The user is a native Spanish speaker from Ecuador practicing spoken English.',
+    byLevel[lvl],
+    'Keep the conversation flowing: always end with a natural question so the user can reply.',
     'Rules:',
-    '- Reply in VERY simple English, at most 2 short sentences.',
     '- Always give a natural Spanish translation of your reply in "reply_es".',
-    '- Only add a "correction" when the user made a REAL error; otherwise set it to null.',
-    '- A correction has "better" (the corrected English) and "why" (an explanation in Spanish, max 15 words).',
-    '- Always give exactly 3 short suggested replies the user could say next, in "options", in simple English.',
-    '- Stay fully in character for the scenario. Be warm and encouraging.',
+    '- Only add a "correction" when the user made a REAL error; otherwise null.',
+    '- A correction has "better" (corrected English) and "why" (a Spanish explanation, max 15 words).',
+    '- Always give exactly 3 short suggested replies in "options" (simple English) so the user is never stuck.',
+    '- Be warm, patient and encouraging. Stay in character.',
     '',
-    'Respond with ONLY a valid JSON object (no markdown, no code fences) with EXACTLY these keys:',
+    'Respond with ONLY a valid JSON object (no markdown, no code fences), EXACTLY these keys:',
     '{"reply": string, "reply_es": string, "correction": {"better": string, "why": string} | null, "options": [string, string, string]}',
   ].join('\n');
 }
 
-export async function onRequestPost({ request, env }) {
-  const key = env && env.GEMINI_API_KEY;
-  if (!key) {
-    return json({ error: 'Falta configurar GEMINI_API_KEY en Cloudflare. La Charla no está disponible; Kit y Oído siguen funcionando.' }, 401);
-  }
-
-  let payload;
-  try {
-    payload = await request.json();
-  } catch (_) {
-    return json({ error: 'Solicitud inválida.' }, 400);
-  }
-
-  const persona = payload && payload.persona;
-  const rawMessages = Array.isArray(payload && payload.messages) ? payload.messages : [];
-
-  // Limita el historial a los últimos 12 mensajes para no gastar la cuota.
-  const trimmed = rawMessages.slice(-12);
-  const contents = trimmed.map((m) => ({
-    role: m && m.role === 'user' ? 'user' : 'model',
-    parts: [{ text: String((m && m.text) || '') }],
-  }));
-  // Si no hay historial, pide el saludo inicial del personaje.
-  if (contents.length === 0) {
-    contents.push({ role: 'user', parts: [{ text: '(The conversation just started. Greet the user briefly, in character, and ask one simple question.)' }] });
-  }
-
-  const body = {
-    systemInstruction: { parts: [{ text: systemInstruction(persona) }] },
-    contents,
-    generationConfig: {
-      temperature: 0.7,
-      maxOutputTokens: 800,
-      responseMimeType: 'application/json',
-    },
-  };
-
-  // Prueba modelos en orden hasta que uno responda (o falle por algo que no sea
-  // "modelo no disponible"). Así funciona aunque la llave no tenga cierto modelo.
-  let upstream = null;
-  let raw = '';
-  let model = '';
-  for (const candidate of modelCandidates(env)) {
-    model = candidate;
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(candidate)}:generateContent?key=${encodeURIComponent(key)}`;
-    try {
-      upstream = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-    } catch (_) {
-      return json({ error: 'No se pudo contactar a la IA. Intenta de nuevo.' }, 502);
-    }
-    raw = await upstream.text();
-    if (isModelNotFound(upstream.status, raw)) continue; // prueba el siguiente modelo
-    break;
-  }
-
-  if (upstream && upstream.status === 429) {
-    return json({ error: 'Se acabó la cuota gratuita de hoy. Vuelve mañana, o sigue practicando en Kit y Oído — esas funcionan siempre.' }, 429);
-  }
-
-  if (!upstream || !upstream.ok) {
-    // Mensaje accionable según el error real de Gemini (sin filtrar la llave).
-    return json({ error: upstreamError(upstream ? upstream.status : 502, raw, model) }, upstream && upstream.status === 403 ? 403 : 502);
-  }
-
-  // Parseo defensivo: extrae el texto y trata de leer el JSON estructurado.
-  let text = '';
-  try {
-    const data = JSON.parse(raw);
-    const parts = data && data.candidates && data.candidates[0]
-      && data.candidates[0].content && data.candidates[0].content.parts;
-    if (Array.isArray(parts)) text = parts.map((p) => p.text || '').join('');
-  } catch (_) { /* seguimos con text vacío */ }
-
-  if (!text) {
-    return json({ reply: '…', reply_es: '', correction: null, options: [] });
-  }
-
-  const structured = parseLoose(text);
-  if (!structured) {
-    // Si el JSON viene mal, al menos devolvemos el texto plano como reply.
-    return json({ reply: text.trim(), reply_es: '', correction: null, options: [] });
-  }
-
-  return json({
+function shape(structured) {
+  return {
     reply: typeof structured.reply === 'string' ? structured.reply : '…',
     reply_es: typeof structured.reply_es === 'string' ? structured.reply_es : '',
     correction: structured.correction && structured.correction.better
       ? { better: String(structured.correction.better), why: String(structured.correction.why || '') }
       : null,
     options: Array.isArray(structured.options) ? structured.options.map(String).slice(0, 3) : [],
-  });
+  };
 }
 
-// Convierte el error crudo de Gemini en un mensaje claro en español, sin filtrar
-// la llave. Incluye una pista técnica corta para poder diagnosticar.
-function upstreamError(status, raw, model) {
-  let msg = '';
-  let gstatus = '';
-  try {
-    const e = JSON.parse(raw).error || {};
-    msg = String(e.message || '');
-    gstatus = String(e.status || '');
-  } catch (_) {}
-  const m = msg.toLowerCase();
+// ---------- Gemini ----------
+async function tryGemini(env, key, systemText, contents) {
+  const body = {
+    systemInstruction: { parts: [{ text: systemText }] },
+    contents,
+    generationConfig: { temperature: 0.7, maxOutputTokens: 800, responseMimeType: 'application/json' },
+  };
 
+  let hardFatal = null;   // 400/401/403: llave, API, región (lo más importante)
+  let notFoundInfo = null;
+  let sawOverload = false;
+
+  // Dos pasadas: la segunda con una espera corta, por si todo estaba saturado.
+  for (let pass = 0; pass < 2; pass++) {
+    if (pass === 1) {
+      if (!sawOverload) break;
+      await sleep(700);
+    }
+    for (const model of modelCandidates(env)) {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(key)}`;
+      let res, raw;
+      try {
+        res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        raw = await res.text();
+      } catch (_) { sawOverload = true; continue; } // error de red: trátalo como reintentar
+
+      const kind = classify(res.status, raw);
+      if (kind === 'ok') {
+        const text = extractText(raw);
+        const structured = text ? parseLoose(text) : null;
+        return { ok: true, data: structured ? shape(structured) : { reply: (text || '…').trim(), reply_es: '', correction: null, options: [] } };
+      }
+      if (kind === 'notfound') { notFoundInfo = { status: res.status, raw, model }; continue; }
+      if (kind === 'overloaded') { sawOverload = true; continue; }
+      if (kind === 'quota') return { ok: false, reason: 'quota' };
+      hardFatal = { status: res.status, raw, model }; // llave/API/región
+    }
+  }
+  if (hardFatal) return { ok: false, reason: 'fatal', ...hardFatal };
+  if (sawOverload) return { ok: false, reason: 'overloaded' };
+  if (notFoundInfo) return { ok: false, reason: 'notfound', ...notFoundInfo };
+  return { ok: false, reason: 'overloaded' };
+}
+
+function extractText(raw) {
+  try {
+    const data = JSON.parse(raw);
+    const parts = data && data.candidates && data.candidates[0]
+      && data.candidates[0].content && data.candidates[0].content.parts;
+    if (Array.isArray(parts)) return parts.map((p) => p.text || '').join('');
+  } catch (_) {}
+  return '';
+}
+
+// ---------- Groq (segunda IA de respaldo, opcional) ----------
+async function tryGroq(env, systemText, contents) {
+  const key = env && env.GROQ_API_KEY;
+  if (!key) return null;
+  const model = (env && env.GROQ_MODEL) || GROQ_DEFAULT_MODEL;
+  const messages = [{ role: 'system', content: systemText }];
+  for (const c of contents) {
+    const text = (c.parts && c.parts[0] && c.parts[0].text) || '';
+    messages.push({ role: c.role === 'model' ? 'assistant' : 'user', content: text });
+  }
+  try {
+    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
+      body: JSON.stringify({ model, messages, temperature: 0.7, max_tokens: 800, response_format: { type: 'json_object' } }),
+    });
+    const raw = await res.text();
+    if (!res.ok) return null;
+    let content = '';
+    try {
+      const data = JSON.parse(raw);
+      content = data && data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content || '';
+    } catch (_) {}
+    const structured = content ? parseLoose(content) : null;
+    if (!structured) return null;
+    return { ok: true, data: shape(structured) };
+  } catch (_) { return null; }
+}
+
+export async function onRequestPost({ request, env }) {
+  const geminiKey = env && env.GEMINI_API_KEY;
+  const groqKey = env && env.GROQ_API_KEY;
+  if (!geminiKey && !groqKey) {
+    return json({ error: 'Falta configurar GEMINI_API_KEY en Cloudflare. La Charla no está disponible; Kit y Oído siguen funcionando.' }, 401);
+  }
+
+  let payload;
+  try { payload = await request.json(); } catch (_) { return json({ error: 'Solicitud inválida.' }, 400); }
+
+  const persona = payload && payload.persona;
+  const level = payload && payload.level;
+  const rawMessages = Array.isArray(payload && payload.messages) ? payload.messages : [];
+  const trimmed = rawMessages.slice(-12); // últimos 12 mensajes (no gastar cuota)
+  const contents = trimmed.map((m) => ({
+    role: m && m.role === 'user' ? 'user' : 'model',
+    parts: [{ text: String((m && m.text) || '') }],
+  }));
+  if (contents.length === 0) {
+    contents.push({ role: 'user', parts: [{ text: '(The conversation just started. Greet the user briefly, in character, and ask one simple question.)' }] });
+  }
+
+  const systemText = systemInstruction(persona, level);
+
+  // 1) Gemini (con rotación de modelos y reintento por saturación).
+  if (geminiKey) {
+    const g = await tryGemini(env, geminiKey, systemText, contents);
+    if (g.ok) return json(g.data);
+    if (g.reason === 'quota') {
+      // Antes de rendirnos, intenta Groq si está configurado.
+      const gr = await tryGroq(env, systemText, contents);
+      if (gr && gr.ok) return json(gr.data);
+      return json({ error: 'Se acabó la cuota gratuita de hoy. Vuelve mañana, o sigue practicando en Kit y Oído — esas funcionan siempre.' }, 429);
+    }
+    if (g.reason === 'fatal') {
+      const gr = await tryGroq(env, systemText, contents);
+      if (gr && gr.ok) return json(gr.data);
+      return json({ error: upstreamError(g.status, g.raw, g.model) }, g.status === 403 ? 403 : 502);
+    }
+    if (g.reason === 'notfound') {
+      const gr = await tryGroq(env, systemText, contents);
+      if (gr && gr.ok) return json(gr.data);
+      return json({ error: `Ningún modelo de IA está disponible para tu llave. Revisa que la GEMINI_API_KEY sea válida y tenga la "Generative Language API" activada; o fija la variable MODEL a gemini-2.5-flash (o configura GROQ_API_KEY como respaldo).` }, 502);
+    }
+    // overloaded / red: intenta Groq y si no, avisa.
+    const gr = await tryGroq(env, systemText, contents);
+    if (gr && gr.ok) return json(gr.data);
+    return json({ error: 'El tutor está con mucha demanda ahora mismo. Reintenta en unos segundos (suele durar poco).' }, 503);
+  }
+
+  // Solo Groq configurado.
+  const gr = await tryGroq(env, systemText, contents);
+  if (gr && gr.ok) return json(gr.data);
+  return json({ error: 'El tutor no está disponible ahora. Reintenta en un momento.' }, 503);
+}
+
+// Convierte un error real de Gemini en un mensaje claro en español (sin filtrar la llave).
+function upstreamError(status, raw, model) {
+  let msg = '', gstatus = '';
+  try { const e = JSON.parse(raw).error || {}; msg = String(e.message || ''); gstatus = String(e.status || ''); } catch (_) {}
+  const m = msg.toLowerCase();
   if (m.includes('api key not valid') || m.includes('api_key_invalid') || status === 401) {
-    return 'La llave GEMINI_API_KEY no es válida. Genera una nueva en aistudio.google.com/apikey y actualízala en Cloudflare (y haz Retry deployment).';
+    return 'La llave GEMINI_API_KEY no es válida. Genera una nueva en aistudio.google.com/apikey y actualízala en Cloudflare (Retry deployment).';
   }
   if (status === 403 || gstatus === 'PERMISSION_DENIED' || m.includes('has not been used') || m.includes('is disabled') || m.includes('service_disabled') || m.includes('permission')) {
-    return 'Falta habilitar la API de Gemini para tu llave. En aistudio.google.com/apikey crea la llave en un proyecto con la "Generative Language API" activada, o actívala en Google Cloud. Luego actualiza la llave en Cloudflare.';
-  }
-  if (status === 404 || m.includes('not found') || m.includes('is not supported') || m.includes('models/')) {
-    return `El modelo "${model}" no está disponible para tu llave. En Cloudflare cambia la variable MODEL a gemini-2.5-flash (o gemini-2.0-flash) y haz Retry deployment.`;
+    return 'Falta habilitar la API de Gemini para tu llave. Crea la llave en aistudio.google.com/apikey en un proyecto con la "Generative Language API" activada, y actualízala en Cloudflare.';
   }
   if (status === 400 && m.includes('user location')) {
-    return 'Gemini no está disponible en tu región para esta llave. Prueba otra llave/proyecto.';
+    return 'Gemini no está disponible en tu región para esta llave. Prueba otra llave/proyecto, o configura GROQ_API_KEY como respaldo.';
   }
-  // Genérico: incluimos una pista corta y segura para diagnosticar.
   const hint = (msg || gstatus || ('HTTP ' + status)).slice(0, 160);
   return 'La IA devolvió un error. Detalle: ' + hint;
 }
 
-// Parseo tolerante: quita ```json ... ``` y recorta al primer objeto {...}.
+// Parseo tolerante: quita fences ```json y recorta al primer objeto {...}.
 function parseLoose(text) {
   let t = String(text || '').trim();
   t = t.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
@@ -205,6 +258,3 @@ function parseLoose(text) {
   }
   return null;
 }
-
-// Cualquier método distinto de POST recibe 405 automáticamente de Cloudflare
-// Pages (no hay handler para GET/PUT/etc.), así que no exponemos otra ruta.

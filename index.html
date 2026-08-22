@@ -330,6 +330,15 @@ const S = {
 function masteredCount() {
   return Object.values(S.cards).filter((c) => isMastered(c.box)).length;
 }
+// Nivel del usuario: EVOLUCIONA con el progreso. El tutor de Charla lo usa para
+// subir la dificultad poco a poco (frases más largas, vocabulario nuevo).
+function userLevel() {
+  const m = masteredCount();
+  if (m >= 44) return 'B2';
+  if (m >= 28) return 'B1';
+  if (m >= 12) return 'A2';
+  return 'A1';
+}
 function allMissedWords() {
   const out = [];
   for (const c of Object.values(S.cards)) {
@@ -944,7 +953,7 @@ function renderCharla(v) {
     </div>
     <div class="ai-avatar-wrap">
       <div class="ai-avatar" id="aiAvatar"><div class="ring"></div>${robotAvatarSVG(accent)}</div>
-      <div class="ai-badge"><span class="dot"></span> ${esc(scen.name)} · en línea</div>
+      <div class="ai-badge"><span class="dot"></span> ${esc(scen.name)} · Nivel ${esc(userLevel())}</div>
     </div>
     <div id="thread"></div>
     <div id="charlaMsg"></div>
@@ -1079,13 +1088,21 @@ async function callChat(scen, history) {
     role: m.role === 'user' ? 'user' : 'model',
     text: m.role === 'user' ? m.text : (m.reply || ''),
   }));
-  const res = await fetch('/api/chat', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ persona: scen.persona, messages: trimmed }),
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
+  const payload = JSON.stringify({ persona: scen.persona, level: userLevel(), messages: trimmed });
+
+  // Reintenta una vez si el tutor está saturado (503), para que la charla fluya.
+  let data = {}, status = 0;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const res = await fetch('/api/chat', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: payload,
+    });
+    status = res.status;
+    data = await res.json().catch(() => ({}));
+    if (res.ok) break;
+    if (status === 503 && attempt === 0) { await new Promise((r) => setTimeout(r, 1500)); continue; }
+    throw new Error(data && data.error ? data.error : 'La IA no está disponible ahora.');
+  }
+  if (status !== 200 && !(data && data.reply)) {
     throw new Error(data && data.error ? data.error : 'La IA no está disponible ahora.');
   }
   return {

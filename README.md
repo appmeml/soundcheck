@@ -19,7 +19,7 @@ Navegación inferior: **Hoy · Kit · Oído · Charla · Familia**.
 - **Hoy** — saludo, racha, cuenta regresiva al viaje (6 de septiembre de 2026), botón grande de la *sesión del día* (12 tarjetas) y tu *punto débil* actual.
 - **Kit** — pronunciación. Escucha la frase (lento 0.6× o normal 1.0×), grábate, y la app compara palabra por palabra: verde si la dijiste, rojo tachado si se perdió. Medidor VU en vivo con tu voz.
 - **Oído** — comprensión auditiva (lo más importante). Reproduce una frase **sin mostrar el texto**; tú escribes lo que oíste. Velocidades: 0.55× · Suave 0.8× · Normal 1.0× · Nativo 1.15×.
-- **Charla** — conversación con IA (Gemini). Eliges escenario, el personaje responde en inglés muy simple con traducción, te corrige solo ante errores reales y te sugiere 3 respuestas para que nunca te quedes trabado.
+- **Charla** — conversación con un tutor de IA que **evoluciona con tu nivel** (A1→A2→B1→B2 según tus frases dominadas): sube la dificultad y el vocabulario poco a poco. Responde en inglés simple con traducción, te corrige solo ante errores reales y te sugiere 3 respuestas para que nunca te quedes trabado. Es **resistente a fallos**: si un modelo de Gemini está saturado, rota a otro y reintenta; y si configuras `GROQ_API_KEY`, usa una segunda IA gratis como respaldo para que la charla fluya casi siempre.
 - **Familia** — creas un grupo o te unes con un código de 6 letras. Marcador con frases dominadas y racha de cada miembro. **Nunca** se comparten grabaciones ni transcripciones.
 
 ### El motor de repetición espaciada (sin IA, gratis, offline)
@@ -75,6 +75,8 @@ tests/run.mjs         Pruebas de LCS y Leitner
    - `GEMINI_API_KEY` = tu llave de Google AI Studio (**márcala como Secret / Encrypt**).
    - `MODEL` = opcional. Por defecto `gemini-2.5-flash-lite` (tier gratis). Si Google cambia los nombres, revisa <https://ai.google.dev/gemini-api/docs/pricing> y pon aquí un modelo **Flash** o **Flash-Lite** vigente — sin tocar código.
    - `STT_MODEL` = opcional. Modelo para transcribir voz en iPhone (ver más abajo). Si no la pones, usa el valor de `MODEL`.
+   - `GROQ_API_KEY` = **opcional pero muy recomendable**. Segunda IA de respaldo (gratis) para que la Charla casi nunca falle cuando Gemini está saturado. Sácala en <https://console.groq.com/keys> y márcala como **Secret**. Si la pones, cuando Gemini dé "mucha demanda" la app usa Groq (Llama) automáticamente.
+   - `GROQ_MODEL` = opcional. Por defecto `llama-3.3-70b-versatile`.
 5. Guarda y **Redeploy**. Tu app queda en `https://soundcheck-xxxx.pages.dev`.
 
 La llave de Gemini **solo** vive en Cloudflare; nunca se envía al navegador.
