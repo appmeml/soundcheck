@@ -14,35 +14,58 @@
 //   w         -> sonido w (water, wait)
 
 export const SCENARIOS = [
+  // --- Para el viaje ---
   {
-    id: 'airport',
+    id: 'airport', group: 'travel',
     name: 'Aeropuerto y migración',
     persona: 'You are a US immigration officer at Orlando airport. Be polite but brief and official.',
   },
   {
-    id: 'hotel',
+    id: 'hotel', group: 'travel',
     name: 'Hotel',
     persona: 'You are a friendly front desk agent at a SpringHill Suites hotel.',
   },
   {
-    id: 'restaurant',
+    id: 'restaurant', group: 'travel',
     name: 'Restaurante',
     persona: 'You are a server at a casual American restaurant in Orlando.',
   },
   {
-    id: 'parks',
+    id: 'parks', group: 'travel',
     name: 'Parques Disney',
     persona: 'You are a cheerful Disney World cast member helping a guest.',
   },
   {
-    id: 'uber',
+    id: 'uber', group: 'travel',
     name: 'Uber y transporte',
     persona: 'You are an Uber driver picking up a passenger in Orlando.',
   },
   {
-    id: 'shopping',
+    id: 'shopping', group: 'travel',
     name: 'Compras y emergencias',
     persona: 'You are a store clerk at a shopping mall in Miami.',
+  },
+
+  // --- Día a día (para seguir mejorando el speaking a largo plazo) ---
+  {
+    id: 'smalltalk', group: 'daily',
+    name: 'Conversación casual',
+    persona: 'You are a friendly American neighbor making small talk. Chat about the weather, the weekend, food and hobbies. Ask easy follow-up questions.',
+  },
+  {
+    id: 'work', group: 'daily',
+    name: 'Trabajo y eventos',
+    persona: 'You are a colleague at an international live-events production company. Talk shop about stage setup, sound check, schedules, crew and gear. Keep it practical.',
+  },
+  {
+    id: 'phone', group: 'daily',
+    name: 'Llamada telefónica',
+    persona: 'You are a customer-support agent on a phone call. Speak clearly, confirm details, and help the caller solve a simple problem (a booking, a bill, an appointment).',
+  },
+  {
+    id: 'meet', group: 'daily',
+    name: 'Conocer gente',
+    persona: 'You are someone the user just met at a social event. Be warm and curious: ask where they are from, what they do, and what they like.',
   },
 ];
 

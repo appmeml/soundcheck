@@ -8,6 +8,7 @@ import { PHRASES } from '../js/content.js';
 import { detectWeakSpots } from '../js/weakspots.js';
 import { encodeWAV, bytesToBase64 } from '../js/audio.js';
 import { onRequestPost as transcribePost } from '../functions/api/transcribe.js';
+import { onRequestPost as chatPost } from '../functions/api/chat.js';
 
 let pass = 0;
 let fail = 0;
@@ -233,6 +234,62 @@ await testA('transcribe: estable en 3 corridas', async () => {
     assert.equal(res.status, 200);
     assert.equal(body.transcript, 'Can I have the check please');
   }
+});
+
+console.log('\nCharla (proxy Gemini, fetch simulado):');
+
+async function chatWithMock(geminiText, { status = 200 } = {}) {
+  const orig = globalThis.fetch;
+  let sentBody = null;
+  globalThis.fetch = async (url, opts) => {
+    sentBody = JSON.parse(opts.body);
+    return {
+      status, ok: status >= 200 && status < 300,
+      async text() { return JSON.stringify({ candidates: [{ content: { parts: [{ text: geminiText }] } }] }); },
+    };
+  };
+  try {
+    const req = { json: async () => ({ persona: 'You are a server.', messages: [{ role: 'user', text: 'hi' }] }) };
+    const res = await chatPost({ request: req, env: { GEMINI_API_KEY: 'k' } });
+    return { res, body: await res.json(), sentBody };
+  } finally { globalThis.fetch = orig; }
+}
+
+await testA('chat: NO envía responseSchema (evita el rechazo de Gemini)', async () => {
+  const { sentBody } = await chatWithMock('{"reply":"Hi!","reply_es":"¡Hola!","correction":null,"options":["a","b","c"]}');
+  assert.equal(sentBody.generationConfig.responseMimeType, 'application/json');
+  assert.equal(sentBody.generationConfig.responseSchema, undefined);
+  assert.ok(sentBody.systemInstruction.parts[0].text.length > 0);
+});
+
+await testA('chat: parsea JSON válido del modelo', async () => {
+  const { res, body } = await chatWithMock('{"reply":"Table for three?","reply_es":"¿Mesa para tres?","correction":{"better":"a table for three","why":"falta el articulo"},"options":["yes","no","thanks"]}');
+  assert.equal(res.status, 200);
+  assert.equal(body.reply, 'Table for three?');
+  assert.equal(body.reply_es, '¿Mesa para tres?');
+  assert.equal(body.correction.better, 'a table for three');
+  assert.equal(body.options.length, 3);
+});
+
+await testA('chat: tolera JSON envuelto en ```json ... ```', async () => {
+  const fenced = '```json\n{"reply":"Ok","reply_es":"Bien","correction":null,"options":["x","y","z"]}\n```';
+  const { body } = await chatWithMock(fenced);
+  assert.equal(body.reply, 'Ok');
+  assert.equal(body.correction, null);
+  assert.equal(body.options.length, 3);
+});
+
+await testA('chat: si el modelo manda texto plano, no truena (fallback)', async () => {
+  const { res, body } = await chatWithMock('Hello there!');
+  assert.equal(res.status, 200);
+  assert.equal(body.reply, 'Hello there!');
+  assert.deepEqual(body.options, []);
+});
+
+await testA('chat: 429 devuelve el mensaje de cuota agotada', async () => {
+  const { res, body } = await chatWithMock('x', { status: 429 });
+  assert.equal(res.status, 429);
+  assert.ok(/cuota/i.test(body.error));
 });
 
 console.log(`\nResultado: ${pass} pasaron, ${fail} fallaron.\n`);

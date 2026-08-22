@@ -33,27 +33,11 @@ function systemInstruction(persona) {
     '- A correction has "better" (the corrected English) and "why" (an explanation in Spanish, max 15 words).',
     '- Always give exactly 3 short suggested replies the user could say next, in "options", in simple English.',
     '- Stay fully in character for the scenario. Be warm and encouraging.',
+    '',
+    'Respond with ONLY a valid JSON object (no markdown, no code fences) with EXACTLY these keys:',
+    '{"reply": string, "reply_es": string, "correction": {"better": string, "why": string} | null, "options": [string, string, string]}',
   ].join('\n');
 }
-
-const RESPONSE_SCHEMA = {
-  type: 'object',
-  properties: {
-    reply: { type: 'string' },
-    reply_es: { type: 'string' },
-    correction: {
-      type: 'object',
-      nullable: true,
-      properties: {
-        better: { type: 'string' },
-        why: { type: 'string' },
-      },
-      required: ['better', 'why'],
-    },
-    options: { type: 'array', items: { type: 'string' } },
-  },
-  required: ['reply', 'reply_es', 'options'],
-};
 
 export async function onRequestPost({ request, env }) {
   const key = env && env.GEMINI_API_KEY;
@@ -79,7 +63,7 @@ export async function onRequestPost({ request, env }) {
   }));
   // Si no hay historial, pide el saludo inicial del personaje.
   if (contents.length === 0) {
-    contents.push({ role: 'user', parts: [{ text: '(The traveler just walked up. Greet them briefly and in character.)' }] });
+    contents.push({ role: 'user', parts: [{ text: '(The conversation just started. Greet the user briefly, in character, and ask one simple question.)' }] });
   }
 
   const model = (env && env.MODEL) || DEFAULT_MODEL;
@@ -90,9 +74,8 @@ export async function onRequestPost({ request, env }) {
     contents,
     generationConfig: {
       temperature: 0.7,
-      maxOutputTokens: 512,
+      maxOutputTokens: 800,
       responseMimeType: 'application/json',
-      responseSchema: RESPONSE_SCHEMA,
     },
   };
 
@@ -130,12 +113,10 @@ export async function onRequestPost({ request, env }) {
     return json({ reply: '…', reply_es: '', correction: null, options: [] });
   }
 
-  let structured;
-  try {
-    structured = JSON.parse(text);
-  } catch (_) {
+  const structured = parseLoose(text);
+  if (!structured) {
     // Si el JSON viene mal, al menos devolvemos el texto plano como reply.
-    return json({ reply: text, reply_es: '', correction: null, options: [] });
+    return json({ reply: text.trim(), reply_es: '', correction: null, options: [] });
   }
 
   return json({
@@ -146,6 +127,19 @@ export async function onRequestPost({ request, env }) {
       : null,
     options: Array.isArray(structured.options) ? structured.options.map(String).slice(0, 3) : [],
   });
+}
+
+// Parseo tolerante: quita ```json ... ``` y recorta al primer objeto {...}.
+function parseLoose(text) {
+  let t = String(text || '').trim();
+  t = t.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+  try { return JSON.parse(t); } catch (_) {}
+  const a = t.indexOf('{');
+  const b = t.lastIndexOf('}');
+  if (a !== -1 && b !== -1 && b > a) {
+    try { return JSON.parse(t.slice(a, b + 1)); } catch (_) {}
+  }
+  return null;
 }
 
 // Cualquier método distinto de POST recibe 405 automáticamente de Cloudflare

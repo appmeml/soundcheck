@@ -396,7 +396,10 @@ function topbar() {
     : `<div class="avatar"></div>`;
   return `<div class="topbar">
     <div class="brand"><div class="mark"><i></i><i></i><i></i><i></i></div><h1>Soundcheck</h1></div>
-    <button id="me" style="padding:0;border:none;background:none">${photo}</button>
+    <div class="row tight" style="align-items:center">
+      <button id="help" title="Cómo funciona" style="padding:6px 12px">?</button>
+      <button id="me" style="padding:0;border:none;background:none">${photo}</button>
+    </div>
   </div>${offlineBanner()}`;
 }
 function offlineBanner() {
@@ -408,6 +411,60 @@ function wireTopbar() {
   if (me) me.onclick = () => {
     if (confirm('¿Cerrar sesión?')) store.signOutUser();
   };
+  const help = $('#help');
+  if (help) help.onclick = () => showTutorial(true);
+}
+
+// ---------- Tutorial de uso ----------
+const TUTORIAL_KEY = 'sc_tutorial_v1';
+const TUTORIAL_STEPS = [
+  { ic: '🎚️', title: 'Bienvenido a Soundcheck', body: 'Practica inglés hablado y de oído en sesiones cortas. La meta es tu viaje… y seguir mejorando mucho después.' },
+  { ic: '◎', title: 'Hoy · tu sesión diaria', body: 'Toca “Sesión de hoy”. La app elige por ti 12 tarjetas: repasa lo que ya viste y suma frases nuevas. Con 10–15 min al día basta.' },
+  { ic: '▤', title: 'Kit · pronunciación', body: 'Escucha la frase (lento o normal), toca 🎙 Grabarme y repítela. Verás en verde lo que dijiste bien y en rojo lo que se perdió.' },
+  { ic: '◑', title: 'Oído · comprensión', body: 'Lo más importante para ti: escuchas SIN ver el texto y escribes lo que oíste. Sube la velocidad poco a poco hasta “Nativo”.' },
+  { ic: '❝', title: 'Charla · conversar con IA', body: 'Habla o escribe con un tutor de IA. Te responde en inglés simple con traducción, te corrige y te sugiere qué decir. Hay temas de viaje y del día a día.' },
+  { ic: '✦', title: 'Racha y punto débil', body: 'Practica cada día para subir tu racha. La app detecta tu sonido más difícil (la “th”, la “v”…) y arma práctica solo de eso.' },
+  { ic: '⁂', title: 'Familia', body: 'Crea un grupo y comparte el código de 6 letras. Cada quien tiene su progreso; el marcador solo muestra frases dominadas y racha.' },
+];
+function tutorialSeen() {
+  try { return localStorage.getItem(TUTORIAL_KEY) === '1'; } catch (_) { return false; }
+}
+function markTutorialSeen() {
+  try { localStorage.setItem(TUTORIAL_KEY, '1'); } catch (_) {}
+}
+function showTutorial(force) {
+  if (!force && tutorialSeen()) return;
+  let i = 0;
+  const bg = document.createElement('div');
+  bg.className = 'modal-bg';
+  bg.innerHTML = `<div class="modal">
+    <div class="center" style="font-size:34px" id="tuIc"></div>
+    <h3 id="tuTitle" style="text-align:center"></h3>
+    <p id="tuBody" style="min-height:66px"></p>
+    <div class="center" id="tuDots" style="margin:8px 0 14px"></div>
+    <div class="row tight">
+      <button id="tuPrev" class="grow">Atrás</button>
+      <button id="tuNext" class="primary grow">Siguiente</button>
+    </div>
+    <button id="tuSkip" style="width:100%;margin-top:8px;border:none;background:none;color:var(--dim)">Saltar</button>
+  </div>`;
+  document.body.appendChild(bg);
+  const close = () => { markTutorialSeen(); bg.remove(); };
+  const draw = () => {
+    const s = TUTORIAL_STEPS[i];
+    $('#tuIc', bg).textContent = s.ic;
+    $('#tuTitle', bg).textContent = s.title;
+    $('#tuBody', bg).textContent = s.body;
+    $('#tuDots', bg).innerHTML = TUTORIAL_STEPS.map((_, k) =>
+      `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;margin:0 3px;background:${k === i ? 'var(--amber)' : 'var(--edge)'}"></span>`).join('');
+    $('#tuPrev', bg).classList.toggle('hide', i === 0);
+    $('#tuNext', bg).textContent = i === TUTORIAL_STEPS.length - 1 ? 'Empezar' : 'Siguiente';
+  };
+  $('#tuPrev', bg).onclick = () => { if (i > 0) { i--; draw(); } };
+  $('#tuNext', bg).onclick = () => { if (i < TUTORIAL_STEPS.length - 1) { i++; draw(); } else close(); };
+  $('#tuSkip', bg).onclick = close;
+  bg.onclick = (e) => { if (e.target === bg) close(); };
+  draw();
 }
 
 function bottomNav() {
@@ -838,6 +895,7 @@ function mountCard(host, phrase, mode, onGraded, opts) {
 const SCEN_ACCENT = {
   airport: '#6FA8FF', hotel: '#F5B342', restaurant: '#7FD1AE',
   parks: '#E58AC9', uber: '#5FC9C9', shopping: '#F2915B',
+  smalltalk: '#9FD35B', work: '#C8A2FF', phone: '#66C7E8', meet: '#F0A6C0',
 };
 function robotAvatarSVG(accent) {
   return `<svg viewBox="0 0 120 120" role="img" aria-label="Tutor de inglés">
@@ -861,11 +919,14 @@ function renderCharla(v) {
   if (!st.scen) {
     v.innerHTML = '';
     v.appendChild(backHeader('Charla'));
+    const travel = SCENARIOS.filter((s) => s.group === 'travel');
+    const daily = SCENARIOS.filter((s) => s.group === 'daily');
+    const grp = (title, list) => `<h2>${esc(title)}</h2>
+      <div class="row" style="margin-bottom:14px">${list.map((s) => `<button class="grow" data-scen="${esc(s.id)}">${esc(s.name)}</button>`).join('')}</div>`;
     const p = document.createElement('div');
     p.className = 'panel';
-    p.innerHTML = `<h2>Elige un escenario</h2>
-      <div class="row">${SCENARIOS.map((s) => `<button class="grow" data-scen="${esc(s.id)}">${esc(s.name)}</button>`).join('')}</div>
-      <p class="dim" style="margin-top:12px">La IA actúa el personaje y responde en inglés muy simple, con traducción. Si se acaba la cuota gratuita del día, Kit y Oído siguen funcionando siempre.</p>`;
+    p.innerHTML = `${grp('Para el viaje', travel)}${grp('Día a día', daily)}
+      <p class="dim">La IA actúa el personaje y responde en inglés muy simple, con traducción. Si se acaba la cuota gratuita del día, Kit y Oído siguen funcionando siempre.</p>`;
     v.appendChild(p);
     v.querySelectorAll('[data-scen]').forEach((b) => b.onclick = () => {
       st.scen = b.dataset.scen; st.history = []; renderCharla(v);
@@ -1123,6 +1184,7 @@ store.onAuth(async (user) => {
   }
   S.view = 'today';
   render();
+  showTutorial(false); // solo la primera vez (se recuerda en el dispositivo)
 });
 
 // ---------- Instalar app (PWA) ----------
