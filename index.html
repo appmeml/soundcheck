@@ -534,12 +534,34 @@ function mountCard(host, phrase, mode, onGraded, opts) {
   let recognizer = null;
   let vu = null;
   let graded = false;
+  let pulseRaf = 0;
+
+  // Pulso animado del medidor cuando no hay niveles reales de micrófono
+  // (p. ej. iOS, donde el reconocimiento de voz usa el micrófono en exclusiva).
+  const startPulse = () => {
+    const t0 = performance.now();
+    const step = (t) => {
+      const s = (t - t0) / 1000;
+      const lvl = 0.35 + 0.35 * (0.5 + 0.5 * Math.sin(s * 6.0));
+      if (vu) vu.setLevel(lvl);
+      pulseRaf = requestAnimationFrame(step);
+    };
+    pulseRaf = requestAnimationFrame(step);
+  };
+  const stopPulse = () => { if (pulseRaf) cancelAnimationFrame(pulseRaf); pulseRaf = 0; };
 
   const cleanup = () => {
+    stopPulse();
     if (meter) { meter.stop(); meter = null; }
     if (recognizer) { recognizer.abort(); recognizer = null; }
     stopSpeaking();
   };
+
+  // Safari en iOS no permite abrir el micrófono dos veces a la vez: si además
+  // del reconocimiento abrimos getUserMedia para el medidor, el reconocimiento
+  // falla. En iOS usamos el pulso animado en vez del medidor real.
+  const isIOS = /iP(hone|ad|od)/.test(navigator.userAgent)
+    || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
   const revealTarget = mode === 'speak';
   host.innerHTML = `
@@ -585,6 +607,9 @@ function mountCard(host, phrase, mode, onGraded, opts) {
     if (graded && opts.inSession) return;
     const res = scoreAttempt(phrase.en, said);
     graded = true;
+    // Detén el medidor/pulso en vivo para que el puntaje quede fijo.
+    stopPulse();
+    if (meter) { meter.stop(); meter = null; }
     vu.setScore(res.score);
     renderResult(res, said);
     // callback para sesiones (avanza y persiste)
@@ -610,42 +635,57 @@ function mountCard(host, phrase, mode, onGraded, opts) {
 
   // Grabación por voz (Kit).
   const recBtn = $('#rec', host);
+  const revealFallback = () => {
+    const d = host.querySelector('details');
+    if (d) { d.open = true; d.scrollIntoView({ block: 'nearest' }); }
+    const fb = $('#typedFallback', host);
+    if (fb) try { fb.focus(); } catch (_) {}
+  };
   if (recBtn) {
     let recording = false;
+    const stopRecording = () => {
+      recording = false; recBtn.textContent = '🎙 Grabarme'; recBtn.classList.remove('danger');
+      stopPulse();
+      if (recognizer) { recognizer.abort(); recognizer = null; }
+      if (meter) { meter.stop(); meter = null; }
+    };
+
     recBtn.onclick = async () => {
       if (!recognitionSupported()) {
-        $('#cardMsg', host).innerHTML = `<div class="banner warn">Este navegador no reconoce voz. Usa el cuadro de texto de abajo.</div>`;
-        host.querySelector('details').open = true;
+        $('#cardMsg', host).innerHTML = `<div class="banner warn">Este navegador no reconoce voz. Escribe la frase en el cuadro de abajo.</div>`;
+        revealFallback();
         return;
       }
-      if (recording) { // detener
-        recording = false; recBtn.textContent = '🎙 Grabarme'; recBtn.classList.remove('danger');
-        if (recognizer) recognizer.abort();
-        if (meter) { meter.stop(); meter = null; }
-        return;
-      }
+      if (recording) { stopRecording(); return; }
+
       $('#cardMsg', host).innerHTML = '';
-      try {
-        meter = new MicMeter((lvl) => vu.setLevel(lvl));
-        await meter.start();
-      } catch (e) {
-        $('#cardMsg', host).innerHTML = `<div class="banner err">${esc(speechErrorMessage('not-allowed'))}</div>`;
-        host.querySelector('details').open = true;
-        return;
-      }
       recording = true; recBtn.textContent = '■ Detener'; recBtn.classList.add('danger');
+
+      // 1) El reconocimiento toma el micrófono PRIMERO (clave en iOS).
       recognizer = createRecognizer({
         onResult: (text) => { grade(text, false); },
         onError: (code) => {
           $('#cardMsg', host).innerHTML = `<div class="banner err">${esc(speechErrorMessage(code))}</div>`;
-          if (code === 'not-allowed' || code === 'audio-capture') host.querySelector('details').open = true;
+          revealFallback(); // ante cualquier fallo, el texto es el plan B
+          stopRecording();
         },
-        onEnd: () => {
-          recording = false; recBtn.textContent = '🎙 Grabarme'; recBtn.classList.remove('danger');
-          if (meter) { meter.stop(); meter = null; }
-        },
+        onEnd: () => { stopRecording(); },
       });
       recognizer.start();
+
+      // 2) Medidor: en iOS usamos pulso animado; en el resto intentamos niveles
+      //    reales, y si el micrófono está ocupado caemos al pulso sin error.
+      if (isIOS) {
+        startPulse();
+      } else {
+        try {
+          meter = new MicMeter((lvl) => vu.setLevel(lvl));
+          await meter.start();
+        } catch (_) {
+          meter = null;
+          startPulse();
+        }
+      }
     };
   }
 
