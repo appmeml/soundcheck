@@ -305,13 +305,27 @@ export function bytesToBase64(bytes) {
   return Buffer.from(bytes).toString('base64');
 }
 
-/** Envía el audio al proxy /api/transcribe y devuelve el texto reconocido. */
-export async function transcribeAudio(base64, mime) {
-  const res = await fetch('/api/transcribe', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ audio: base64, mime }),
-  });
+/** Envía el audio al proxy /api/transcribe y devuelve el texto reconocido.
+ *  Con timeout: si la red se cuelga, aborta y avisa en vez de quedarse pegado. */
+export async function transcribeAudio(base64, mime, timeoutMs = 25000) {
+  const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const timer = ctrl ? setTimeout(() => ctrl.abort(), timeoutMs) : 0;
+  let res;
+  try {
+    res = await fetch('/api/transcribe', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ audio: base64, mime }),
+      signal: ctrl ? ctrl.signal : undefined,
+    });
+  } catch (e) {
+    if (e && e.name === 'AbortError') {
+      throw new Error('La transcripción tardó demasiado. Revisa tu conexión o escribe la frase.');
+    }
+    throw new Error('No se pudo enviar el audio. Revisa tu conexión o escribe la frase.');
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data && data.error ? data.error : 'No se pudo transcribir el audio.');
   return (data && typeof data.transcript === 'string') ? data.transcript : '';

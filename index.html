@@ -961,8 +961,11 @@ function renderCharla(v) {
   const avatarEl = $('#aiAvatar', v);
   const speakAvatar = async (text, rate) => {
     if (avatarEl) avatarEl.classList.add('speaking');
+    // Guarda: si el navegador (iOS) no dispara onend, no dejes la animación pegada.
+    const guard = setTimeout(() => { if (avatarEl) avatarEl.classList.remove('speaking'); },
+      Math.min(15000, 2500 + (text ? text.length * 90 : 0)));
     try { await speak(text, rate); }
-    finally { if (avatarEl) avatarEl.classList.remove('speaking'); }
+    finally { clearTimeout(guard); if (avatarEl) avatarEl.classList.remove('speaking'); }
   };
 
   const thread = $('#thread', v);

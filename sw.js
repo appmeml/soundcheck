@@ -3,7 +3,7 @@
 // - network-only para /api/* y para todo lo de googleapis.com
 //   (Firestore maneja su propio offline; nunca lo cacheamos aquí)
 
-const CACHE = 'soundcheck-v3';
+const CACHE = 'soundcheck-v4';
 
 const ASSETS = [
   './',
