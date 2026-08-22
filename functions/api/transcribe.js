@@ -80,7 +80,19 @@ export async function onRequestPost({ request, env }) {
 
   const raw = await upstream.text();
   if (!upstream.ok) {
-    return json({ error: 'El transcriptor devolvió un error. Intenta de nuevo.' }, 502);
+    let msg = '', gstatus = '';
+    try { const e = JSON.parse(raw).error || {}; msg = String(e.message || ''); gstatus = String(e.status || ''); } catch (_) {}
+    const m = msg.toLowerCase();
+    if (m.includes('api key not valid') || upstream.status === 401) {
+      return json({ error: 'La llave GEMINI_API_KEY no es válida. Actualízala en Cloudflare. Mientras tanto, escribe la frase.' }, 502);
+    }
+    if (upstream.status === 403 || gstatus === 'PERMISSION_DENIED' || m.includes('has not been used') || m.includes('disabled')) {
+      return json({ error: 'Falta habilitar la API de Gemini para tu llave. Mientras tanto, escribe la frase.' }, 502);
+    }
+    if (upstream.status === 404 || m.includes('not found')) {
+      return json({ error: 'El modelo de voz no está disponible. En Cloudflare pon STT_MODEL=gemini-2.5-flash. Mientras tanto, escribe la frase.' }, 502);
+    }
+    return json({ error: 'El transcriptor devolvió un error. Detalle: ' + (msg || gstatus || ('HTTP ' + upstream.status)).slice(0, 140) }, 502);
   }
 
   let text = '';

@@ -96,8 +96,8 @@ export async function onRequestPost({ request, env }) {
 
   const raw = await upstream.text();
   if (!upstream.ok) {
-    // Nunca reflejamos la llave ni el detalle crudo del upstream.
-    return json({ error: 'La IA devolvió un error. Intenta de nuevo en un momento.' }, 502);
+    // Mensaje accionable según el error real de Gemini (sin filtrar la llave).
+    return json({ error: upstreamError(upstream.status, raw, model) }, upstream.status === 403 ? 403 : 502);
   }
 
   // Parseo defensivo: extrae el texto y trata de leer el JSON estructurado.
@@ -127,6 +127,35 @@ export async function onRequestPost({ request, env }) {
       : null,
     options: Array.isArray(structured.options) ? structured.options.map(String).slice(0, 3) : [],
   });
+}
+
+// Convierte el error crudo de Gemini en un mensaje claro en español, sin filtrar
+// la llave. Incluye una pista técnica corta para poder diagnosticar.
+function upstreamError(status, raw, model) {
+  let msg = '';
+  let gstatus = '';
+  try {
+    const e = JSON.parse(raw).error || {};
+    msg = String(e.message || '');
+    gstatus = String(e.status || '');
+  } catch (_) {}
+  const m = msg.toLowerCase();
+
+  if (m.includes('api key not valid') || m.includes('api_key_invalid') || status === 401) {
+    return 'La llave GEMINI_API_KEY no es válida. Genera una nueva en aistudio.google.com/apikey y actualízala en Cloudflare (y haz Retry deployment).';
+  }
+  if (status === 403 || gstatus === 'PERMISSION_DENIED' || m.includes('has not been used') || m.includes('is disabled') || m.includes('service_disabled') || m.includes('permission')) {
+    return 'Falta habilitar la API de Gemini para tu llave. En aistudio.google.com/apikey crea la llave en un proyecto con la "Generative Language API" activada, o actívala en Google Cloud. Luego actualiza la llave en Cloudflare.';
+  }
+  if (status === 404 || m.includes('not found') || m.includes('is not supported') || m.includes('models/')) {
+    return `El modelo "${model}" no está disponible para tu llave. En Cloudflare cambia la variable MODEL a gemini-2.5-flash (o gemini-2.0-flash) y haz Retry deployment.`;
+  }
+  if (status === 400 && m.includes('user location')) {
+    return 'Gemini no está disponible en tu región para esta llave. Prueba otra llave/proyecto.';
+  }
+  // Genérico: incluimos una pista corta y segura para diagnosticar.
+  const hint = (msg || gstatus || ('HTTP ' + status)).slice(0, 160);
+  return 'La IA devolvió un error. Detalle: ' + hint;
 }
 
 // Parseo tolerante: quita ```json ... ``` y recorta al primer objeto {...}.

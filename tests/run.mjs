@@ -292,5 +292,36 @@ await testA('chat: 429 devuelve el mensaje de cuota agotada', async () => {
   assert.ok(/cuota/i.test(body.error));
 });
 
+// Diagnóstico de errores reales de Gemini (mensaje accionable, sin filtrar llave).
+async function chatWithError(status, errorObj) {
+  const orig = globalThis.fetch;
+  globalThis.fetch = async () => ({
+    status, ok: false,
+    async text() { return JSON.stringify({ error: errorObj }); },
+  });
+  try {
+    const req = { json: async () => ({ persona: 'x', messages: [] }) };
+    const res = await chatPost({ request: req, env: { GEMINI_API_KEY: 'super-secret-key' } });
+    return { res, body: await res.json() };
+  } finally { globalThis.fetch = orig; }
+}
+
+await testA('chat: llave inválida -> mensaje claro y NO filtra la llave', async () => {
+  const { body } = await chatWithError(400, { code: 400, status: 'INVALID_ARGUMENT', message: 'API key not valid. Please pass a valid API key.' });
+  assert.ok(/GEMINI_API_KEY/.test(body.error));
+  assert.ok(!body.error.includes('super-secret-key'));
+});
+
+await testA('chat: API no habilitada (403) -> instrucción de activarla', async () => {
+  const { res, body } = await chatWithError(403, { code: 403, status: 'PERMISSION_DENIED', message: 'Generative Language API has not been used in project ... is disabled.' });
+  assert.equal(res.status, 403);
+  assert.ok(/habilitar|activ/i.test(body.error));
+});
+
+await testA('chat: modelo inexistente (404) -> sugiere cambiar MODEL', async () => {
+  const { body } = await chatWithError(404, { code: 404, status: 'NOT_FOUND', message: 'models/foo is not found' });
+  assert.ok(/MODEL/.test(body.error));
+});
+
 console.log(`\nResultado: ${pass} pasaron, ${fail} fallaron.\n`);
 process.exit(fail ? 1 : 0);
