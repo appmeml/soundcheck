@@ -8,7 +8,32 @@
 //   STT_MODEL       (opcional; por defecto usa MODEL, y si no, gemini-2.5-flash-lite)
 //   MODEL           (opcional; compartida con /api/chat)
 
-const DEFAULT_MODEL = 'gemini-2.5-flash-lite';
+// Modelos a probar en orden (todos aceptan audio). Si STT_MODEL/MODEL están
+// definidos en Cloudflare, se prueban primero.
+const MODEL_FALLBACKS = [
+  'gemini-2.0-flash',
+  'gemini-2.5-flash',
+  'gemini-flash-latest',
+  'gemini-2.0-flash-lite',
+  'gemini-2.5-flash-lite',
+];
+function modelCandidates(env) {
+  const first = env && (env.STT_MODEL || env.MODEL);
+  const list = MODEL_FALLBACKS.slice();
+  if (first && !list.includes(first)) return [first, ...list];
+  if (first) return [first, ...list.filter((m) => m !== first)];
+  return list;
+}
+function isModelNotFound(status, raw) {
+  if (status === 404) return true;
+  try {
+    const e = JSON.parse(raw).error || {};
+    const s = String(e.status || '');
+    const m = String(e.message || '').toLowerCase();
+    return s === 'NOT_FOUND' || m.includes('not found') || m.includes('is not supported') || m.includes('not available');
+  } catch (_) { return false; }
+}
+
 const MAX_AUDIO_B64 = 6_000_000; // ~4.5 MB de audio; suficiente para frases cortas
 
 function json(body, status = 200) {
@@ -40,9 +65,6 @@ export async function onRequestPost({ request, env }) {
     return json({ error: 'La grabación es muy larga. Intenta una frase más corta.' }, 413);
   }
 
-  const model = (env && (env.STT_MODEL || env.MODEL)) || DEFAULT_MODEL;
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(key)}`;
-
   const body = {
     systemInstruction: {
       parts: [{
@@ -63,36 +85,41 @@ export async function onRequestPost({ request, env }) {
     generationConfig: { temperature: 0, maxOutputTokens: 64 },
   };
 
-  let upstream;
-  try {
-    upstream = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-  } catch (_) {
-    return json({ error: 'No se pudo contactar al transcriptor. Revisa tu conexión.' }, 502);
+  // Prueba modelos en orden hasta que uno acepte el audio.
+  let upstream = null;
+  let raw = '';
+  for (const candidate of modelCandidates(env)) {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(candidate)}:generateContent?key=${encodeURIComponent(key)}`;
+    try {
+      upstream = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+    } catch (_) {
+      return json({ error: 'No se pudo contactar al transcriptor. Revisa tu conexión.' }, 502);
+    }
+    raw = await upstream.text();
+    if (isModelNotFound(upstream.status, raw)) continue;
+    break;
   }
 
-  if (upstream.status === 429) {
+  if (upstream && upstream.status === 429) {
     return json({ error: 'Se acabó la cuota gratuita de hoy. Usa el cuadro de texto, o vuelve mañana.' }, 429);
   }
 
-  const raw = await upstream.text();
-  if (!upstream.ok) {
+  if (!upstream || !upstream.ok) {
     let msg = '', gstatus = '';
     try { const e = JSON.parse(raw).error || {}; msg = String(e.message || ''); gstatus = String(e.status || ''); } catch (_) {}
     const m = msg.toLowerCase();
-    if (m.includes('api key not valid') || upstream.status === 401) {
+    const status = upstream ? upstream.status : 502;
+    if (m.includes('api key not valid') || status === 401) {
       return json({ error: 'La llave GEMINI_API_KEY no es válida. Actualízala en Cloudflare. Mientras tanto, escribe la frase.' }, 502);
     }
-    if (upstream.status === 403 || gstatus === 'PERMISSION_DENIED' || m.includes('has not been used') || m.includes('disabled')) {
+    if (status === 403 || gstatus === 'PERMISSION_DENIED' || m.includes('has not been used') || m.includes('disabled')) {
       return json({ error: 'Falta habilitar la API de Gemini para tu llave. Mientras tanto, escribe la frase.' }, 502);
     }
-    if (upstream.status === 404 || m.includes('not found')) {
-      return json({ error: 'El modelo de voz no está disponible. En Cloudflare pon STT_MODEL=gemini-2.5-flash. Mientras tanto, escribe la frase.' }, 502);
-    }
-    return json({ error: 'El transcriptor devolvió un error. Detalle: ' + (msg || gstatus || ('HTTP ' + upstream.status)).slice(0, 140) }, 502);
+    return json({ error: 'El transcriptor devolvió un error. Detalle: ' + (msg || gstatus || ('HTTP ' + status)).slice(0, 140) }, 502);
   }
 
   let text = '';

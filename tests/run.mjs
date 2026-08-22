@@ -323,5 +323,25 @@ await testA('chat: modelo inexistente (404) -> sugiere cambiar MODEL', async () 
   assert.ok(/MODEL/.test(body.error));
 });
 
+await testA('chat: si un modelo da 404, prueba el siguiente automáticamente', async () => {
+  const orig = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = async () => {
+    calls++;
+    if (calls === 1) {
+      return { status: 404, ok: false, async text() { return JSON.stringify({ error: { status: 'NOT_FOUND', message: 'model not found' } }); } };
+    }
+    return { status: 200, ok: true, async text() { return JSON.stringify({ candidates: [{ content: { parts: [{ text: '{"reply":"Hi","reply_es":"Hola","correction":null,"options":["a","b","c"]}' }] } }] }); } };
+  };
+  try {
+    const req = { json: async () => ({ persona: 'x', messages: [] }) };
+    const res = await chatPost({ request: req, env: { GEMINI_API_KEY: 'k' } });
+    const body = await res.json();
+    assert.equal(res.status, 200);
+    assert.equal(body.reply, 'Hi');
+    assert.ok(calls >= 2, 'debió intentar un segundo modelo');
+  } finally { globalThis.fetch = orig; }
+});
+
 console.log(`\nResultado: ${pass} pasaron, ${fail} fallaron.\n`);
 process.exit(fail ? 1 : 0);

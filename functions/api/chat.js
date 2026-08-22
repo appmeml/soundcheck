@@ -3,13 +3,41 @@
 //
 // Variables de entorno (Cloudflare Pages → Settings → Environment variables):
 //   GEMINI_API_KEY  (obligatoria, secreta)
-//   MODEL           (opcional; por defecto gemini-2.5-flash-lite, del tier gratis)
+//   MODEL           (opcional; se prueba primero, luego una lista de respaldo)
 //
-// Los nombres de modelo cambian seguido. Verifica en
-// https://ai.google.dev/gemini-api/docs/pricing cuáles están hoy en el tier
-// gratuito (usa un Flash o Flash-Lite) y ajusta la variable MODEL sin tocar código.
+// Los nombres/accesos de modelo cambian seguido. Por eso la app prueba varios
+// modelos Flash del tier gratis en orden hasta encontrar el que tu llave acepta
+// (ver MODEL_FALLBACKS). No necesitas configurar nada; MODEL solo fuerza uno.
 
-const DEFAULT_MODEL = 'gemini-2.5-flash-lite';
+// Lista de modelos a probar en orden. La app prueba cada uno hasta encontrar
+// el que la llave del usuario acepta (los nombres/accesos cambian seguido).
+// Si se define MODEL en Cloudflare, ese se prueba primero.
+const MODEL_FALLBACKS = [
+  'gemini-2.0-flash',
+  'gemini-2.5-flash',
+  'gemini-flash-latest',
+  'gemini-2.0-flash-lite',
+  'gemini-2.5-flash-lite',
+];
+
+function modelCandidates(env) {
+  const first = env && env.MODEL;
+  const list = MODEL_FALLBACKS.slice();
+  if (first && !list.includes(first)) return [first, ...list];
+  if (first) return [first, ...list.filter((m) => m !== first)];
+  return list;
+}
+
+// ¿El error indica que ESE modelo no existe/está disponible? (para probar el siguiente)
+function isModelNotFound(status, raw) {
+  if (status === 404) return true;
+  try {
+    const e = JSON.parse(raw).error || {};
+    const s = String(e.status || '');
+    const m = String(e.message || '').toLowerCase();
+    return s === 'NOT_FOUND' || m.includes('not found') || m.includes('is not supported') || m.includes('not available');
+  } catch (_) { return false; }
+}
 
 function json(body, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -66,9 +94,6 @@ export async function onRequestPost({ request, env }) {
     contents.push({ role: 'user', parts: [{ text: '(The conversation just started. Greet the user briefly, in character, and ask one simple question.)' }] });
   }
 
-  const model = (env && env.MODEL) || DEFAULT_MODEL;
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(key)}`;
-
   const body = {
     systemInstruction: { parts: [{ text: systemInstruction(persona) }] },
     contents,
@@ -79,25 +104,35 @@ export async function onRequestPost({ request, env }) {
     },
   };
 
-  let upstream;
-  try {
-    upstream = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-  } catch (_) {
-    return json({ error: 'No se pudo contactar a la IA. Intenta de nuevo.' }, 502);
+  // Prueba modelos en orden hasta que uno responda (o falle por algo que no sea
+  // "modelo no disponible"). Así funciona aunque la llave no tenga cierto modelo.
+  let upstream = null;
+  let raw = '';
+  let model = '';
+  for (const candidate of modelCandidates(env)) {
+    model = candidate;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(candidate)}:generateContent?key=${encodeURIComponent(key)}`;
+    try {
+      upstream = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+    } catch (_) {
+      return json({ error: 'No se pudo contactar a la IA. Intenta de nuevo.' }, 502);
+    }
+    raw = await upstream.text();
+    if (isModelNotFound(upstream.status, raw)) continue; // prueba el siguiente modelo
+    break;
   }
 
-  if (upstream.status === 429) {
+  if (upstream && upstream.status === 429) {
     return json({ error: 'Se acabó la cuota gratuita de hoy. Vuelve mañana, o sigue practicando en Kit y Oído — esas funcionan siempre.' }, 429);
   }
 
-  const raw = await upstream.text();
-  if (!upstream.ok) {
+  if (!upstream || !upstream.ok) {
     // Mensaje accionable según el error real de Gemini (sin filtrar la llave).
-    return json({ error: upstreamError(upstream.status, raw, model) }, upstream.status === 403 ? 403 : 502);
+    return json({ error: upstreamError(upstream ? upstream.status : 502, raw, model) }, upstream && upstream.status === 403 ? 403 : 502);
   }
 
   // Parseo defensivo: extrae el texto y trata de leer el JSON estructurado.
