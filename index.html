@@ -206,7 +206,7 @@ import { detectWeakSpots, phrasesForPattern } from './js/weakspots.js';
 import { TRIP_DATE } from './js/firebaseConfig.js';
 import {
   primeVoices, speak, stopSpeaking, createRecognizer, recognitionSupported,
-  speechErrorMessage, MicMeter,
+  speechErrorMessage, MicMeter, AudioRecorder, transcribeAudio, preferServerSpeech,
 } from './js/audio.js';
 import * as store from './js/store.js';
 
@@ -530,38 +530,23 @@ function renderPractice(v, mode) {
 
 // ---------- Tarjeta de práctica (Kit y Oído comparten motor) ----------
 function mountCard(host, phrase, mode, onGraded, opts) {
-  let meter = null;
-  let recognizer = null;
+  let meter = null;        // MicMeter (ruta Web Speech, Chrome/Android)
+  let recorder = null;     // AudioRecorder (ruta Gemini, iPhone)
+  let recognizer = null;   // SpeechRecognition (ruta Web Speech)
   let vu = null;
   let graded = false;
-  let pulseRaf = 0;
-
-  // Pulso animado del medidor cuando no hay niveles reales de micrófono
-  // (p. ej. iOS, donde el reconocimiento de voz usa el micrófono en exclusiva).
-  const startPulse = () => {
-    const t0 = performance.now();
-    const step = (t) => {
-      const s = (t - t0) / 1000;
-      const lvl = 0.35 + 0.35 * (0.5 + 0.5 * Math.sin(s * 6.0));
-      if (vu) vu.setLevel(lvl);
-      pulseRaf = requestAnimationFrame(step);
-    };
-    pulseRaf = requestAnimationFrame(step);
-  };
-  const stopPulse = () => { if (pulseRaf) cancelAnimationFrame(pulseRaf); pulseRaf = 0; };
 
   const cleanup = () => {
-    stopPulse();
     if (meter) { meter.stop(); meter = null; }
+    if (recorder) { try { recorder.stop(); } catch (_) {} recorder = null; }
     if (recognizer) { recognizer.abort(); recognizer = null; }
     stopSpeaking();
   };
 
-  // Safari en iOS no permite abrir el micrófono dos veces a la vez: si además
-  // del reconocimiento abrimos getUserMedia para el medidor, el reconocimiento
-  // falla. En iOS usamos el pulso animado en vez del medidor real.
-  const isIOS = /iP(hone|ad|od)/.test(navigator.userAgent)
-    || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  // En iPhone (Safari y Chrome usan WebKit) el reconocimiento del navegador no
+  // es fiable; ahí grabamos y transcribimos con Gemini. En Chrome/Android
+  // usamos el Web Speech API (gratis e ilimitado).
+  const useServer = preferServerSpeech();
 
   const revealTarget = mode === 'speak';
   host.innerHTML = `
@@ -607,8 +592,7 @@ function mountCard(host, phrase, mode, onGraded, opts) {
     if (graded && opts.inSession) return;
     const res = scoreAttempt(phrase.en, said);
     graded = true;
-    // Detén el medidor/pulso en vivo para que el puntaje quede fijo.
-    stopPulse();
+    // Detén el medidor en vivo para que el puntaje quede fijo.
     if (meter) { meter.stop(); meter = null; }
     vu.setScore(res.score);
     renderResult(res, said);
@@ -641,51 +625,84 @@ function mountCard(host, phrase, mode, onGraded, opts) {
     const fb = $('#typedFallback', host);
     if (fb) try { fb.focus(); } catch (_) {}
   };
+  const setRecUI = (on) => {
+    if (!recBtn) return;
+    recBtn.textContent = on ? '■ Detener' : '🎙 Grabarme';
+    recBtn.classList.toggle('danger', on);
+  };
+  const micError = (msgOrCode, isCode = true) => {
+    const msg = isCode ? speechErrorMessage(msgOrCode) : msgOrCode;
+    $('#cardMsg', host).innerHTML = `<div class="banner err">${esc(msg)}</div>`;
+    revealFallback();
+  };
+
   if (recBtn) {
     let recording = false;
-    const stopRecording = () => {
-      recording = false; recBtn.textContent = '🎙 Grabarme'; recBtn.classList.remove('danger');
-      stopPulse();
+
+    // ----- Ruta A: grabar y transcribir con Gemini (iPhone / sin Web Speech) -----
+    const stopServerRecording = async () => {
+      recording = false; setRecUI(false);
+      let out;
+      try { out = recorder ? recorder.stop() : null; } finally { recorder = null; }
+      if (!out || out.empty) {
+        micError(speechErrorMessage('no-speech'), false);
+        return;
+      }
+      $('#cardMsg', host).innerHTML = `<div class="dim"><span class="spinner"></span> Analizando tu voz…</div>`;
+      if (!isOnline()) { micError('Sin internet: la voz en iPhone necesita conexión. Escribe la frase abajo o usa Oído sin conexión.', false); return; }
+      try {
+        const transcript = await transcribeAudio(out.base64, out.mime);
+        $('#cardMsg', host).innerHTML = '';
+        if (!transcript) { micError(speechErrorMessage('no-speech'), false); return; }
+        grade(transcript, false);
+      } catch (e) {
+        micError(e.message || 'No se pudo transcribir. Escribe la frase abajo.', false);
+      }
+    };
+
+    const startServerRecording = async () => {
+      $('#cardMsg', host).innerHTML = '';
+      try {
+        recorder = new AudioRecorder((lvl) => vu.setLevel(lvl));
+        await recorder.start();
+      } catch (e) {
+        recorder = null;
+        micError('not-allowed');
+        return;
+      }
+      recording = true; setRecUI(true);
+    };
+
+    // ----- Ruta B: Web Speech API (Chrome / Android, gratis e ilimitado) -----
+    const stopWebSpeech = () => {
+      recording = false; setRecUI(false);
       if (recognizer) { recognizer.abort(); recognizer = null; }
       if (meter) { meter.stop(); meter = null; }
     };
-
-    recBtn.onclick = async () => {
-      if (!recognitionSupported()) {
-        $('#cardMsg', host).innerHTML = `<div class="banner warn">Este navegador no reconoce voz. Escribe la frase en el cuadro de abajo.</div>`;
-        revealFallback();
-        return;
-      }
-      if (recording) { stopRecording(); return; }
-
+    const startWebSpeech = async () => {
       $('#cardMsg', host).innerHTML = '';
-      recording = true; recBtn.textContent = '■ Detener'; recBtn.classList.add('danger');
-
-      // 1) El reconocimiento toma el micrófono PRIMERO (clave en iOS).
+      recording = true; setRecUI(true);
       recognizer = createRecognizer({
         onResult: (text) => { grade(text, false); },
-        onError: (code) => {
-          $('#cardMsg', host).innerHTML = `<div class="banner err">${esc(speechErrorMessage(code))}</div>`;
-          revealFallback(); // ante cualquier fallo, el texto es el plan B
-          stopRecording();
-        },
-        onEnd: () => { stopRecording(); },
+        onError: (code) => { micError(code); stopWebSpeech(); },
+        onEnd: () => { stopWebSpeech(); },
       });
       recognizer.start();
+      // Medidor en vivo (Chrome permite micrófono + reconocimiento a la vez).
+      try {
+        meter = new MicMeter((lvl) => vu.setLevel(lvl));
+        await meter.start();
+      } catch (_) { meter = null; }
+    };
 
-      // 2) Medidor: en iOS usamos pulso animado; en el resto intentamos niveles
-      //    reales, y si el micrófono está ocupado caemos al pulso sin error.
-      if (isIOS) {
-        startPulse();
-      } else {
-        try {
-          meter = new MicMeter((lvl) => vu.setLevel(lvl));
-          await meter.start();
-        } catch (_) {
-          meter = null;
-          startPulse();
-        }
+    recBtn.onclick = async () => {
+      if (recording) {
+        if (useServer) await stopServerRecording();
+        else stopWebSpeech();
+        return;
       }
+      if (useServer) await startServerRecording();
+      else await startWebSpeech();
     };
   }
 
@@ -775,13 +792,54 @@ function renderCharla(v) {
 
   $('#send', v).onclick = () => sendMsg();
   $('#say', v).addEventListener('keydown', (e) => { if (e.key === 'Enter') sendMsg(); });
-  $('#micSay', v).onclick = () => {
-    if (!recognitionSupported()) { $('#charlaMsg', v).innerHTML = `<div class="banner warn">Este navegador no reconoce voz. Escribe tu respuesta.</div>`; return; }
-    const r = createRecognizer({
-      onResult: (t) => { $('#say', v).value = t; },
-      onError: (code) => { $('#charlaMsg', v).innerHTML = `<div class="banner err">${esc(speechErrorMessage(code))}</div>`; },
-    });
-    r.start();
+
+  // Entrada por voz: en iPhone graba y transcribe con Gemini; en Chrome/Android
+  // usa el Web Speech API. Tocar una vez inicia, tocar otra vez detiene.
+  const micBtn = $('#micSay', v);
+  let charlaRec = null;   // AudioRecorder
+  let charlaSR = null;    // SpeechRecognition
+  let charlaRecording = false;
+  const charlaErr = (msg) => { $('#charlaMsg', v).innerHTML = `<div class="banner err">${esc(msg)}</div>`; };
+  const setMicUI = (on) => { micBtn.textContent = on ? '■' : '🎙'; micBtn.classList.toggle('danger', on); };
+
+  micBtn.onclick = async () => {
+    if (charlaRecording) {
+      // Detener
+      if (preferServerSpeech()) {
+        charlaRecording = false; setMicUI(false);
+        let out;
+        try { out = charlaRec ? charlaRec.stop() : null; } finally { charlaRec = null; }
+        if (!out || out.empty) { charlaErr(speechErrorMessage('no-speech')); return; }
+        if (!isOnline()) { charlaErr('La voz en iPhone necesita internet. Escribe tu respuesta.'); return; }
+        $('#charlaMsg', v).innerHTML = `<div class="dim"><span class="spinner"></span> Escuchando…</div>`;
+        try {
+          const t = await transcribeAudio(out.base64, out.mime);
+          $('#charlaMsg', v).innerHTML = '';
+          if (t) $('#say', v).value = t; else charlaErr(speechErrorMessage('no-speech'));
+        } catch (e) { charlaErr(e.message || 'No se pudo transcribir. Escribe tu respuesta.'); }
+      } else {
+        charlaRecording = false; setMicUI(false);
+        if (charlaSR) { charlaSR.abort(); charlaSR = null; }
+      }
+      return;
+    }
+    // Iniciar
+    if (preferServerSpeech()) {
+      try {
+        charlaRec = new AudioRecorder(null);
+        await charlaRec.start();
+        charlaRecording = true; setMicUI(true);
+      } catch (_) { charlaRec = null; charlaErr(speechErrorMessage('not-allowed')); }
+    } else {
+      if (!recognitionSupported()) { charlaErr('Este navegador no reconoce voz. Escribe tu respuesta.'); return; }
+      charlaSR = createRecognizer({
+        onResult: (t) => { $('#say', v).value = t; },
+        onError: (code) => { charlaErr(speechErrorMessage(code)); charlaRecording = false; setMicUI(false); charlaSR = null; },
+        onEnd: () => { charlaRecording = false; setMicUI(false); charlaSR = null; },
+      });
+      charlaSR.start();
+      charlaRecording = true; setMicUI(true);
+    }
   };
 
   drawThread();

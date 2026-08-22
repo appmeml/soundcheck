@@ -6,11 +6,17 @@ import { scoreAttempt } from '../js/lcs.js';
 import { updateCard, BOX_INTERVAL_DAYS, DAY, buildSession } from '../js/leitner.js';
 import { PHRASES } from '../js/content.js';
 import { detectWeakSpots } from '../js/weakspots.js';
+import { encodeWAV, bytesToBase64 } from '../js/audio.js';
+import { onRequestPost as transcribePost } from '../functions/api/transcribe.js';
 
 let pass = 0;
 let fail = 0;
 function test(name, fn) {
   try { fn(); pass++; console.log('  ✓ ' + name); }
+  catch (e) { fail++; console.log('  ✗ ' + name + '\n      ' + e.message); }
+}
+async function testA(name, fn) {
+  try { await fn(); pass++; console.log('  ✓ ' + name); }
   catch (e) { fail++; console.log('  ✗ ' + name + '\n      ' + e.message); }
 }
 
@@ -126,6 +132,107 @@ test('Un patrón con 3+ palabras distintas se reporta', () => {
   const th = w.find((x) => x.key === 'th');
   assert.ok(th, 'debe detectar th');
   assert.equal(th.count, 3);
+});
+
+console.log('\nGrabación de voz (WAV -> base64 -> transcripción):');
+
+function readStr(view, off, len) {
+  let s = '';
+  for (let i = 0; i < len; i++) s += String.fromCharCode(view.getUint8(off + i));
+  return s;
+}
+
+test('encodeWAV produce una cabecera WAV válida (16 kHz, mono, 16-bit)', () => {
+  const inRate = 44100;
+  const samples = new Float32Array(inRate); // 1 s
+  for (let i = 0; i < samples.length; i++) samples[i] = Math.sin((2 * Math.PI * 220 * i) / inRate) * 0.5;
+  const wav = encodeWAV(samples, inRate, 16000);
+  const view = new DataView(wav.buffer);
+  assert.equal(readStr(view, 0, 4), 'RIFF');
+  assert.equal(readStr(view, 8, 4), 'WAVE');
+  assert.equal(view.getUint16(20, true), 1);      // PCM
+  assert.equal(view.getUint16(22, true), 1);      // mono
+  assert.equal(view.getUint32(24, true), 16000);  // sample rate de salida
+  assert.equal(view.getUint16(34, true), 16);     // bits por muestra
+  assert.equal(readStr(view, 36, 4), 'data');
+  // ~16000 muestras * 2 bytes + 44 de cabecera
+  assert.ok(Math.abs(wav.length - (44 + 16000 * 2)) < 200, 'longitud aproximada correcta');
+});
+
+test('encodeWAV es determinístico en 3 corridas seguidas', () => {
+  const inRate = 48000;
+  const samples = new Float32Array(inRate / 2);
+  for (let i = 0; i < samples.length; i++) samples[i] = Math.sin(i / 7) * 0.4;
+  const a = bytesToBase64(encodeWAV(samples, inRate, 16000));
+  const b = bytesToBase64(encodeWAV(samples, inRate, 16000));
+  const c = bytesToBase64(encodeWAV(samples, inRate, 16000));
+  assert.equal(a, b);
+  assert.equal(b, c);
+  assert.ok(a.length > 100);
+});
+
+test('bytesToBase64 hace round-trip correcto', () => {
+  const bytes = new Uint8Array([0, 1, 2, 250, 251, 255, 42, 100]);
+  const b64 = bytesToBase64(bytes);
+  const back = new Uint8Array(Buffer.from(b64, 'base64'));
+  assert.deepEqual([...back], [...bytes]);
+});
+
+// Prueba end-to-end del proxy de transcripción con un fetch simulado.
+async function transcribeWithMock(geminiText, { status = 200 } = {}) {
+  const orig = globalThis.fetch;
+  let captured = null;
+  globalThis.fetch = async (url, opts) => {
+    captured = { url, opts };
+    return {
+      status,
+      ok: status >= 200 && status < 300,
+      async text() {
+        return JSON.stringify({ candidates: [{ content: { parts: [{ text: geminiText }] } }] });
+      },
+    };
+  };
+  try {
+    const req = { json: async () => ({ audio: 'QUJD', mime: 'audio/wav' }) };
+    const res = await transcribePost({ request: req, env: { GEMINI_API_KEY: 'test-key' } });
+    const body = await res.json();
+    return { res, body, captured };
+  } finally {
+    globalThis.fetch = orig;
+  }
+}
+
+await testA('transcribe: devuelve el texto reconocido y NO expone la llave', async () => {
+  const { res, body, captured } = await transcribeWithMock('  Here is my passport.  ');
+  assert.equal(res.status, 200);
+  assert.equal(body.transcript, 'Here is my passport.'); // recortado (la comparación LCS ya normaliza mayúsculas)
+  // La llave viaja en la URL del upstream, nunca en la respuesta al navegador.
+  assert.ok(captured.url.includes('test-key'));
+  assert.ok(!JSON.stringify(body).includes('test-key'));
+});
+
+await testA('transcribe: 401 claro si falta la llave', async () => {
+  const req = { json: async () => ({ audio: 'QUJD', mime: 'audio/wav' }) };
+  const res = await transcribePost({ request: req, env: {} });
+  assert.equal(res.status, 401);
+  const body = await res.json();
+  assert.ok(/GEMINI_API_KEY/.test(body.error));
+});
+
+await testA('transcribe: 400 si no llega audio', async () => {
+  const req = { json: async () => ({ mime: 'audio/wav' }) };
+  const res = await transcribePost({ request: req, env: { GEMINI_API_KEY: 'k' } });
+  assert.equal(res.status, 400);
+});
+
+// Ejecuta la comprobación de la ruta completa 3 veces (iPhone/Android usan el
+// mismo proxy; aquí validamos que sea estable en repeticiones).
+await testA('transcribe: estable en 3 corridas', async () => {
+  for (let i = 0; i < 3; i++) {
+    const { res, body } = await transcribeWithMock('Can I have the check please');
+    assert.equal(res.status, 200);
+    assert.equal(body.transcript, 'Can I have the check please');
+  }
 });
 
 console.log(`\nResultado: ${pass} pasaron, ${fail} fallaron.\n`);

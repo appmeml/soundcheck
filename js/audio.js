@@ -159,3 +159,173 @@ export class MicMeter {
     this.analyser = null;
   }
 }
+
+// ---------- Grabadora universal (Web Audio -> WAV) ----------
+// Funciona donde SpeechRecognition NO es fiable (Safari/iOS): captura PCM con
+// un ScriptProcessorNode, entrega niveles en vivo para el medidor VU y, al
+// detener, produce un WAV 16 kHz mono listo para transcribir con Gemini.
+
+const OUT_RATE = 16000;
+
+export class AudioRecorder {
+  constructor(onLevel) {
+    this.onLevel = onLevel;
+    this.stream = null;
+    this.ctx = null;
+    this.source = null;
+    this.processor = null;
+    this.sink = null;
+    this.chunks = [];
+    this.inRate = 44100;
+    this.recording = false;
+  }
+
+  async start() {
+    // Crea el AudioContext DENTRO del gesto del usuario (antes de cualquier
+    // await); Safari/iOS exige eso para permitir audio.
+    const AC = window.AudioContext || window.webkitAudioContext;
+    this.ctx = new AC();
+    if (this.ctx.state === 'suspended') { try { await this.ctx.resume(); } catch (_) {} }
+    this.inRate = this.ctx.sampleRate || 44100;
+
+    this.stream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+    });
+    this.source = this.ctx.createMediaStreamSource(this.stream);
+
+    const bufSize = 4096;
+    this.processor = this.ctx.createScriptProcessor(bufSize, 1, 1);
+    this.chunks = [];
+    this.recording = true;
+
+    this.processor.onaudioprocess = (e) => {
+      if (!this.recording) return;
+      const input = e.inputBuffer.getChannelData(0);
+      this.chunks.push(new Float32Array(input));
+      if (this.onLevel) {
+        let sum = 0;
+        for (let i = 0; i < input.length; i++) sum += input[i] * input[i];
+        const rms = Math.sqrt(sum / input.length);
+        this.onLevel(Math.min(1, rms * 3.4));
+      }
+    };
+
+    // ScriptProcessor solo dispara si está conectado al destino; usamos una
+    // ganancia en 0 para no reproducir el micrófono (evita eco/acople).
+    this.sink = this.ctx.createGain();
+    this.sink.gain.value = 0;
+    this.source.connect(this.processor);
+    this.processor.connect(this.sink);
+    this.sink.connect(this.ctx.destination);
+  }
+
+  /** Detiene, libera recursos y devuelve { base64, mime, empty }. */
+  stop() {
+    this.recording = false;
+    const inRate = this.inRate;
+    const chunks = this.chunks;
+    this.chunks = [];
+
+    if (this.processor) { this.processor.onaudioprocess = null; try { this.processor.disconnect(); } catch (_) {} }
+    if (this.source) { try { this.source.disconnect(); } catch (_) {} }
+    if (this.sink) { try { this.sink.disconnect(); } catch (_) {} }
+    if (this.stream) { this.stream.getTracks().forEach((t) => t.stop()); this.stream = null; }
+    if (this.ctx && this.ctx.state !== 'closed') { this.ctx.close().catch(() => {}); }
+    this.ctx = null; this.source = null; this.processor = null; this.sink = null;
+
+    // Une los trozos.
+    let total = 0;
+    for (const c of chunks) total += c.length;
+    const flat = new Float32Array(total);
+    let off = 0;
+    for (const c of chunks) { flat.set(c, off); off += c.length; }
+
+    // Silencio/ruido demasiado corto -> nada útil.
+    const empty = total < inRate * 0.25; // < ~0.25 s
+    const wav = encodeWAV(flat, inRate, OUT_RATE);
+    return { base64: bytesToBase64(wav), mime: 'audio/wav', empty };
+  }
+}
+
+// Downsample lineal + PCM 16-bit + cabecera WAV. Puro (testeable en Node).
+export function encodeWAV(float32, inRate, outRate = OUT_RATE) {
+  const data = inRate === outRate ? float32 : downsample(float32, inRate, outRate);
+  const buffer = new ArrayBuffer(44 + data.length * 2);
+  const view = new DataView(buffer);
+  const writeStr = (o, s) => { for (let i = 0; i < s.length; i++) view.setUint8(o + i, s.charCodeAt(i)); };
+
+  writeStr(0, 'RIFF');
+  view.setUint32(4, 36 + data.length * 2, true);
+  writeStr(8, 'WAVE');
+  writeStr(12, 'fmt ');
+  view.setUint32(16, 16, true);        // tamaño del subchunk fmt
+  view.setUint16(20, 1, true);         // PCM
+  view.setUint16(22, 1, true);         // mono
+  view.setUint32(24, outRate, true);
+  view.setUint32(28, outRate * 2, true); // byte rate
+  view.setUint16(32, 2, true);         // block align
+  view.setUint16(34, 16, true);        // bits por muestra
+  writeStr(36, 'data');
+  view.setUint32(40, data.length * 2, true);
+
+  let off = 44;
+  for (let i = 0; i < data.length; i++) {
+    let s = Math.max(-1, Math.min(1, data[i]));
+    view.setInt16(off, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+    off += 2;
+  }
+  return new Uint8Array(buffer);
+}
+
+function downsample(float32, inRate, outRate) {
+  if (outRate >= inRate) return float32;
+  const ratio = inRate / outRate;
+  const outLen = Math.floor(float32.length / ratio);
+  const out = new Float32Array(outLen);
+  for (let i = 0; i < outLen; i++) {
+    const start = Math.floor(i * ratio);
+    const end = Math.min(float32.length, Math.floor((i + 1) * ratio));
+    let sum = 0;
+    for (let j = start; j < end; j++) sum += float32[j];
+    out[i] = end > start ? sum / (end - start) : 0;
+  }
+  return out;
+}
+
+export function bytesToBase64(bytes) {
+  if (typeof btoa === 'function') {
+    let bin = '';
+    const chunk = 0x8000;
+    for (let i = 0; i < bytes.length; i += chunk) {
+      bin += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+    }
+    return btoa(bin);
+  }
+  // Node (para pruebas)
+  return Buffer.from(bytes).toString('base64');
+}
+
+/** Envía el audio al proxy /api/transcribe y devuelve el texto reconocido. */
+export async function transcribeAudio(base64, mime) {
+  const res = await fetch('/api/transcribe', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ audio: base64, mime }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data && data.error ? data.error : 'No se pudo transcribir el audio.');
+  return (data && typeof data.transcript === 'string') ? data.transcript : '';
+}
+
+// ¿Debemos usar la ruta de grabación+Gemini en vez de Web Speech?
+// En iOS (Safari y Chrome, ambos WebKit) SpeechRecognition no es fiable.
+export function isAppleWebKit() {
+  const ua = navigator.userAgent || '';
+  const iOS = /iP(hone|ad|od)/.test(ua)
+    || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  return iOS;
+}
+
+export function preferServerSpeech() {
+  return isAppleWebKit() || !recognitionSupported();
+}

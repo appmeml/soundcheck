@@ -74,6 +74,7 @@ tests/run.mjs         Pruebas de LCS y Leitner
 4. En **Settings → Environment variables** agrega:
    - `GEMINI_API_KEY` = tu llave de Google AI Studio (**márcala como Secret / Encrypt**).
    - `MODEL` = opcional. Por defecto `gemini-2.5-flash-lite` (tier gratis). Si Google cambia los nombres, revisa <https://ai.google.dev/gemini-api/docs/pricing> y pon aquí un modelo **Flash** o **Flash-Lite** vigente — sin tocar código.
+   - `STT_MODEL` = opcional. Modelo para transcribir voz en iPhone (ver más abajo). Si no la pones, usa el valor de `MODEL`.
 5. Guarda y **Redeploy**. Tu app queda en `https://soundcheck-xxxx.pages.dev`.
 
 La llave de Gemini **solo** vive en Cloudflare; nunca se envía al navegador.
@@ -133,7 +134,18 @@ Edita `js/content.js`. Cada frase es un objeto:
 | Firebase Auth + Firestore | Tier gratis Spark: sobrado para una familia. |
 | **Charla (Gemini)** | Tier gratis: ~1 000 mensajes/día con `gemini-2.5-flash-lite` (15/min). Al agotarse, la app avisa y **Kit y Oído siguen funcionando siempre**. |
 
-> **Compatibilidad de voz:** SpeechRecognition (grabarse) funciona en Chrome/Edge/Android y en Safari iOS reciente. Donde no exista, cada pantalla tiene un cuadro de texto de respaldo con el mismo botón de revisar, así que la app **siempre** es usable.
+### Reconocimiento de voz — dos caminos según el dispositivo
+
+El Web Speech API del navegador (`SpeechRecognition`) funciona bien en **Chrome y Android** (gratis e ilimitado), pero **no es confiable en el iPhone** (Safari y Chrome de iOS usan el mismo motor WebKit, que lo rompe). Por eso Soundcheck usa dos caminos automáticamente:
+
+| Dispositivo | Cómo reconoce la voz | Costo |
+|---|---|---|
+| Chrome / Edge / Android | Web Speech API del navegador | Gratis, ilimitado, no usa cuota |
+| **iPhone / iPad** (Safari o Chrome) | Graba en el navegador → WAV → lo transcribe **Gemini** (`/api/transcribe`) | Usa la cuota gratuita de Gemini; necesita internet |
+
+En el iPhone, grabar la voz consume un mensaje de la cuota de Gemini (la misma de Charla). Si se agota, la app avisa y puedes seguir con el **cuadro de texto** (mismo puntaje) o con **Oído**. La transcripción del iPhone **necesita conexión**; sin internet, usa el cuadro de texto.
+
+> **En el iPhone, para mejores resultados:** la primera vez, toca **🎙 Grabarme** y **Permitir** el micrófono. Cada pantalla tiene además un cuadro de texto de respaldo con el mismo botón de revisar, así que la app **siempre** es usable aunque falle el micrófono.
 
 ---
 
