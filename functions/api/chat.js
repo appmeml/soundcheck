@@ -196,36 +196,46 @@ export async function onRequestPost({ request, env }) {
 
   const systemText = systemInstruction(persona, level);
 
-  // 1) Gemini (con rotación de modelos y reintento por saturación).
-  if (geminiKey) {
-    const g = await tryGemini(env, geminiKey, systemText, contents);
-    if (g.ok) return json(g.data);
-    if (g.reason === 'quota') {
-      // Antes de rendirnos, intenta Groq si está configurado.
+  // Prueba los proveedores en orden. Con Groq presente, va PRIMERO (su cuota
+  // gratis diaria es mayor); así las cuotas de Groq y Gemini se SUMAN.
+  let geminiFail = null;
+  for (const provider of providerOrder(env)) {
+    if (provider === 'groq') {
       const gr = await tryGroq(env, systemText, contents);
       if (gr && gr.ok) return json(gr.data);
-      return json({ error: 'Se acabó la cuota gratuita de hoy. Vuelve mañana, o sigue practicando en Kit y Oído — esas funcionan siempre.' }, 429);
+    } else {
+      const g = await tryGemini(env, geminiKey, systemText, contents);
+      if (g.ok) return json(g.data);
+      geminiFail = g;
     }
-    if (g.reason === 'fatal') {
-      const gr = await tryGroq(env, systemText, contents);
-      if (gr && gr.ok) return json(gr.data);
-      return json({ error: upstreamError(g.status, g.raw, g.model) }, g.status === 403 ? 403 : 502);
-    }
-    if (g.reason === 'notfound') {
-      const gr = await tryGroq(env, systemText, contents);
-      if (gr && gr.ok) return json(gr.data);
-      return json({ error: `Ningún modelo de IA está disponible para tu llave. Revisa que la GEMINI_API_KEY sea válida y tenga la "Generative Language API" activada; o fija la variable MODEL a gemini-2.5-flash (o configura GROQ_API_KEY como respaldo).` }, 502);
-    }
-    // overloaded / red: intenta Groq y si no, avisa.
-    const gr = await tryGroq(env, systemText, contents);
-    if (gr && gr.ok) return json(gr.data);
-    return json({ error: 'El tutor está con mucha demanda ahora mismo. Reintenta en unos segundos (suele durar poco).' }, 503);
   }
 
-  // Solo Groq configurado.
-  const gr = await tryGroq(env, systemText, contents);
-  if (gr && gr.ok) return json(gr.data);
-  return json({ error: 'El tutor no está disponible ahora. Reintenta en un momento.' }, 503);
+  // Ninguno respondió: mensaje accionable (prioriza el diagnóstico de Gemini).
+  if (geminiFail) {
+    if (geminiFail.reason === 'quota') {
+      return json({ error: 'Se acabó la cuota gratuita de hoy en las dos IAs. Vuelve mañana (se renueva solo), o sigue practicando en Kit y Oído — esas funcionan siempre.' }, 429);
+    }
+    if (geminiFail.reason === 'fatal') {
+      return json({ error: upstreamError(geminiFail.status, geminiFail.raw, geminiFail.model) }, geminiFail.status === 403 ? 403 : 502);
+    }
+    if (geminiFail.reason === 'notfound') {
+      return json({ error: 'Ningún modelo de IA está disponible para tu llave. Revisa que la GEMINI_API_KEY sea válida y tenga la "Generative Language API" activada; o fija MODEL a gemini-2.5-flash.' }, 502);
+    }
+  }
+  return json({ error: 'El tutor está con mucha demanda ahora mismo. Reintenta en unos segundos (suele durar poco).' }, 503);
+}
+
+// Orden de proveedores. Si hay Groq, va primero (mayor cuota gratis diaria).
+// AI_PRIMARY ('groq'|'gemini') permite forzarlo.
+function providerOrder(env) {
+  const hasGroq = !!(env && env.GROQ_API_KEY);
+  const hasGemini = !!(env && env.GEMINI_API_KEY);
+  const explicit = env && env.AI_PRIMARY && String(env.AI_PRIMARY).toLowerCase();
+  let order;
+  if (explicit === 'gemini') order = ['gemini', 'groq'];
+  else if (explicit === 'groq') order = ['groq', 'gemini'];
+  else order = hasGroq ? ['groq', 'gemini'] : ['gemini', 'groq'];
+  return order.filter((p) => (p === 'groq' && hasGroq) || (p === 'gemini' && hasGemini));
 }
 
 // Convierte un error real de Gemini en un mensaje claro en español (sin filtrar la llave).

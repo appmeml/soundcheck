@@ -130,23 +130,30 @@ export async function onRequestPost({ request, env }) {
   if (!audio || typeof audio !== 'string') return json({ error: 'No llegó audio para transcribir.' }, 400);
   if (audio.length > MAX_AUDIO_B64) return json({ error: 'La grabación es muy larga. Intenta una frase más corta.' }, 413);
 
-  // 1) Gemini con rotación/reintento.
-  if (geminiKey) {
-    const g = await tryGemini(env, geminiKey, audio, mime);
-    if (g.ok) return json({ transcript: g.text });
-    // Ante cuota/saturación/error, intenta Groq Whisper si está configurado.
+  // Si hay Groq (Whisper), va PRIMERO: su cuota gratis de voz es amplia y así se
+  // suma a la de Gemini. AI_PRIMARY='gemini' invierte el orden.
+  const groqFirst = groqKey && String((env && env.AI_PRIMARY) || '').toLowerCase() !== 'gemini';
+
+  if (groqFirst) {
     const gr = await tryGroqWhisper(env, audio, mime);
     if (gr && gr.ok) return json({ transcript: gr.text });
-
-    if (g.reason === 'quota') return json({ error: 'Se acabó la cuota gratuita de hoy. Usa el cuadro de texto, o vuelve mañana.' }, 429);
-    if (g.reason === 'overloaded') return json({ error: 'El reconocimiento de voz está con mucha demanda ahora. Reintenta en unos segundos o escribe la frase.' }, 503);
-    if (g.reason === 'notfound') return json({ error: 'Ningún modelo de voz está disponible para tu llave. Revisa la GEMINI_API_KEY o configura GROQ_API_KEY.' }, 502);
-    return json({ error: upstreamError(g.status, g.raw) }, g.status === 403 ? 403 : 502);
   }
 
-  // Solo Groq configurado.
-  const gr = await tryGroqWhisper(env, audio, mime);
-  if (gr && gr.ok) return json({ transcript: gr.text });
+  let g = null;
+  if (geminiKey) {
+    g = await tryGemini(env, geminiKey, audio, mime);
+    if (g.ok) return json({ transcript: g.text });
+  }
+
+  if (!groqFirst) {
+    const gr = await tryGroqWhisper(env, audio, mime);
+    if (gr && gr.ok) return json({ transcript: gr.text });
+  }
+
+  if (g && g.reason === 'quota') return json({ error: 'Se acabó la cuota gratuita de hoy. Usa el cuadro de texto, o vuelve mañana.' }, 429);
+  if (g && g.reason === 'overloaded') return json({ error: 'El reconocimiento de voz está con mucha demanda ahora. Reintenta en unos segundos o escribe la frase.' }, 503);
+  if (g && g.reason === 'notfound') return json({ error: 'Ningún modelo de voz está disponible para tu llave. Revisa la GEMINI_API_KEY o configura GROQ_API_KEY.' }, 502);
+  if (g) return json({ error: upstreamError(g.status, g.raw) }, g.status === 403 ? 403 : 502);
   return json({ error: 'El reconocimiento de voz no está disponible ahora. Escribe la frase.' }, 502);
 }
 
