@@ -174,7 +174,6 @@ export class AudioRecorder {
     this.ctx = null;
     this.source = null;
     this.processor = null;
-    this.sink = null;
     this.chunks = [];
     this.inRate = 44100;
     this.recording = false;
@@ -210,13 +209,13 @@ export class AudioRecorder {
       }
     };
 
-    // ScriptProcessor solo dispara si está conectado al destino; usamos una
-    // ganancia en 0 para no reproducir el micrófono (evita eco/acople).
-    this.sink = this.ctx.createGain();
-    this.sink.gain.value = 0;
+    // El ScriptProcessor solo "corre" si su cadena llega al destino. Lo
+    // conectamos DIRECTO al destino: como nunca escribimos el buffer de salida,
+    // no hay eco (sale silencio), pero iOS sí procesa la entrada del micrófono.
+    // (El truco anterior con una ganancia en 0 hacía que iOS apagara el grafo
+    //  y se grabara silencio.)
     this.source.connect(this.processor);
-    this.processor.connect(this.sink);
-    this.sink.connect(this.ctx.destination);
+    this.processor.connect(this.ctx.destination);
   }
 
   /** Detiene, libera recursos y devuelve { base64, mime, empty }. */
@@ -228,10 +227,9 @@ export class AudioRecorder {
 
     if (this.processor) { this.processor.onaudioprocess = null; try { this.processor.disconnect(); } catch (_) {} }
     if (this.source) { try { this.source.disconnect(); } catch (_) {} }
-    if (this.sink) { try { this.sink.disconnect(); } catch (_) {} }
     if (this.stream) { this.stream.getTracks().forEach((t) => t.stop()); this.stream = null; }
     if (this.ctx && this.ctx.state !== 'closed') { this.ctx.close().catch(() => {}); }
-    this.ctx = null; this.source = null; this.processor = null; this.sink = null;
+    this.ctx = null; this.source = null; this.processor = null;
 
     // Une los trozos.
     let total = 0;
@@ -249,7 +247,10 @@ export class AudioRecorder {
     const norm = normalizeSamples(flat, level.peak);
 
     const wav = encodeWAV(norm, inRate, OUT_RATE);
-    return { base64: bytesToBase64(wav), mime: 'audio/wav', empty };
+    return {
+      base64: bytesToBase64(wav), mime: 'audio/wav', empty,
+      peak: level.peak, rms: level.rms, seconds: total / inRate,
+    };
   }
 }
 

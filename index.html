@@ -825,8 +825,10 @@ function mountCard(host, phrase, mode, onGraded, opts) {
       recording = false; setRecUI(false);
       let out;
       try { out = recorder ? recorder.stop() : null; } finally { recorder = null; }
-      if (!out || out.empty) {
-        micError(speechErrorMessage('no-speech'), false);
+      if (!out) { micError('No se grabó nada. Intenta de nuevo.', false); return; }
+      const pct = Math.round((out.peak || 0) * 100);
+      if (out.empty) {
+        micError(`Casi no se captó tu voz (nivel ${pct}%). Habla más fuerte y cerca del micrófono, o escribe la frase abajo.`, false);
         return;
       }
       $('#cardMsg', host).innerHTML = `<div class="dim"><span class="spinner"></span> Analizando tu voz…</div>`;
@@ -834,7 +836,7 @@ function mountCard(host, phrase, mode, onGraded, opts) {
       try {
         const transcript = await transcribeAudio(out.base64, out.mime);
         $('#cardMsg', host).innerHTML = '';
-        if (!transcript) { micError(speechErrorMessage('no-speech'), false); return; }
+        if (!transcript) { micError(`No te entendí bien (nivel ${pct}%). Repite más claro, o escribe la frase abajo.`, false); return; }
         grade(transcript, false);
       } catch (e) {
         micError(e.message || 'No se pudo transcribir. Escribe la frase abajo.', false);
@@ -1045,13 +1047,15 @@ function renderCharla(v) {
         charlaRecording = false; setMicUI(false);
         let out;
         try { out = charlaRec ? charlaRec.stop() : null; } finally { charlaRec = null; }
-        if (!out || out.empty) { charlaErr(speechErrorMessage('no-speech')); return; }
+        if (!out) { charlaErr('No se grabó nada. Intenta de nuevo.'); return; }
+        const pct = Math.round((out.peak || 0) * 100);
+        if (out.empty) { charlaErr(`Casi no se captó tu voz (nivel ${pct}%). Habla más fuerte y cerca del micrófono, o toca una sugerencia.`); return; }
         if (!isOnline()) { charlaErr('La voz en iPhone necesita internet. Escribe tu respuesta.'); return; }
         $('#charlaMsg', v).innerHTML = `<div class="dim"><span class="spinner"></span> Escuchando…</div>`;
         try {
           const t = await transcribeAudio(out.base64, out.mime);
           $('#charlaMsg', v).innerHTML = '';
-          if (t) $('#say', v).value = t; else charlaErr(speechErrorMessage('no-speech'));
+          if (t) { $('#say', v).value = t; } else { charlaErr(`No te entendí bien (nivel ${pct}%). Repite más claro o toca una sugerencia.`); }
         } catch (e) { charlaErr(e.message || 'No se pudo transcribir. Escribe tu respuesta.'); }
       } else {
         charlaRecording = false; setMicUI(false);
