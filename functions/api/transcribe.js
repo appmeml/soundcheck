@@ -69,9 +69,10 @@ export async function onRequestPost({ request, env }) {
     systemInstruction: {
       parts: [{
         text: [
-          'You transcribe short English speech recorded by a Spanish-speaking learner practicing for a trip.',
-          'Output ONLY the exact English words you hear, in lowercase, with no punctuation and no extra comments.',
-          'If you truly hear nothing intelligible, output an empty string.',
+          'You transcribe short English speech recorded by a Spanish-speaking BEGINNER practicing for a trip.',
+          'Expect a strong Spanish accent and imperfect pronunciation; still do your BEST to guess the intended English words.',
+          'Output ONLY those words, in lowercase, with no punctuation and no extra comments.',
+          'Output an empty string ONLY if the audio is completely silent.',
         ].join(' '),
       }],
     },

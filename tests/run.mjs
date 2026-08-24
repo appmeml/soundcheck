@@ -6,7 +6,7 @@ import { scoreAttempt } from '../js/lcs.js';
 import { updateCard, BOX_INTERVAL_DAYS, DAY, buildSession } from '../js/leitner.js';
 import { PHRASES } from '../js/content.js';
 import { detectWeakSpots } from '../js/weakspots.js';
-import { encodeWAV, bytesToBase64 } from '../js/audio.js';
+import { encodeWAV, bytesToBase64, rmsPeak, normalizeSamples } from '../js/audio.js';
 import { onRequestPost as transcribePost } from '../functions/api/transcribe.js';
 import { onRequestPost as chatPost } from '../functions/api/chat.js';
 
@@ -170,6 +170,27 @@ test('encodeWAV es determinístico en 3 corridas seguidas', () => {
   assert.equal(a, b);
   assert.equal(b, c);
   assert.ok(a.length > 100);
+});
+
+test('rmsPeak mide pico y RMS de la señal', () => {
+  const s = new Float32Array([0.5, -0.5, 0.5, -0.5]);
+  const { peak, rms } = rmsPeak(s);
+  assert.ok(Math.abs(peak - 0.5) < 1e-9);
+  assert.ok(Math.abs(rms - 0.5) < 1e-9);
+});
+
+test('normalizeSamples sube el volumen de una grabación baja (iPhone)', () => {
+  const quiet = new Float32Array([0.1, -0.08, 0.1, -0.1]); // pico 0.1
+  const out = normalizeSamples(quiet);
+  const { peak } = rmsPeak(out);
+  assert.ok(peak > 0.9 && peak <= 1.0, 'debe acercar el pico a ~0.97, fue ' + peak);
+});
+
+test('normalizeSamples no toca señales ya fuertes ni el silencio', () => {
+  const loud = new Float32Array([0.99, -0.95, 0.9]);
+  assert.equal(normalizeSamples(loud), loud); // sin cambios
+  const silence = new Float32Array([0, 0, 0, 0]);
+  assert.equal(normalizeSamples(silence), silence);
 });
 
 test('bytesToBase64 hace round-trip correcto', () => {

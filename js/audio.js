@@ -240,11 +240,43 @@ export class AudioRecorder {
     let off = 0;
     for (const c of chunks) { flat.set(c, off); off += c.length; }
 
-    // Silencio/ruido demasiado corto -> nada útil.
-    const empty = total < inRate * 0.25; // < ~0.25 s
-    const wav = encodeWAV(flat, inRate, OUT_RATE);
+    // Detecta silencio real (por duración Y por volumen) y sube el volumen de
+    // grabaciones bajas antes de enviar (clave en iPhone, donde sale flojito).
+    const level = rmsPeak(flat);
+    const tooShort = total < inRate * 0.3;      // < ~0.3 s
+    const tooQuiet = level.rms < 0.006;         // prácticamente silencio
+    const empty = tooShort || tooQuiet;
+    const norm = normalizeSamples(flat, level.peak);
+
+    const wav = encodeWAV(norm, inRate, OUT_RATE);
     return { base64: bytesToBase64(wav), mime: 'audio/wav', empty };
   }
+}
+
+// Nivel de una señal (RMS + pico). Puro (testeable en Node).
+export function rmsPeak(flat) {
+  let peak = 0, sumSq = 0;
+  for (let i = 0; i < flat.length; i++) {
+    const a = flat[i] < 0 ? -flat[i] : flat[i];
+    if (a > peak) peak = a;
+    sumSq += flat[i] * flat[i];
+  }
+  return { peak, rms: flat.length ? Math.sqrt(sumSq / flat.length) : 0 };
+}
+
+// Sube el volumen a un pico objetivo (~0.97), con ganancia máxima acotada para
+// no amplificar ruido de fondo. No modifica el arreglo original.
+export function normalizeSamples(flat, peak) {
+  const p = peak == null ? rmsPeak(flat).peak : peak;
+  if (!p || p >= 0.97) return flat;
+  const gain = Math.min(0.97 / p, 12);
+  if (gain <= 1.05) return flat;
+  const out = new Float32Array(flat.length);
+  for (let i = 0; i < flat.length; i++) {
+    let v = flat[i] * gain;
+    out[i] = v > 1 ? 1 : (v < -1 ? -1 : v);
+  }
+  return out;
 }
 
 // Downsample lineal + PCM 16-bit + cabecera WAV. Puro (testeable en Node).
