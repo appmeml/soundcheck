@@ -101,7 +101,8 @@ export function createRecognizer({ onResult, onError, onEnd }) {
 
   return {
     start() { try { rec.start(); } catch (_) { /* ya iniciado */ } },
-    abort() { try { rec.abort(); } catch (_) {} },
+    stop() { try { rec.stop(); } catch (_) {} },  // finaliza y entrega el resultado
+    abort() { try { rec.abort(); } catch (_) {} }, // cancela sin resultado
   };
 }
 

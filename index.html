@@ -1034,51 +1034,73 @@ function renderCharla(v) {
   // Entrada por voz: en iPhone graba y transcribe con Gemini; en Chrome/Android
   // usa el Web Speech API. Tocar una vez inicia, tocar otra vez detiene.
   const micBtn = $('#micSay', v);
-  let charlaRec = null;   // AudioRecorder
-  let charlaSR = null;    // SpeechRecognition
+  let charlaRec = null;    // AudioRecorder (iPhone)
+  let charlaSR = null;     // SpeechRecognition (Chrome/Android)
+  let charlaMeter = null;  // MicMeter (medidor en la ruta Web Speech)
+  let charlaVU = null;
   let charlaRecording = false;
   const charlaErr = (msg) => { $('#charlaMsg', v).innerHTML = `<div class="banner err">${esc(msg)}</div>`; };
-  const setMicUI = (on) => { micBtn.textContent = on ? '■' : '🎙'; micBtn.classList.toggle('danger', on); };
+  const setMicUI = (on) => {
+    micBtn.textContent = on ? '■' : '🎙';
+    micBtn.classList.toggle('danger', on);
+    micBtn.title = on ? 'Tocar para enviar' : 'Hablar';
+  };
+  // Medidor de voz en vivo mientras grabas.
+  const showMeter = () => {
+    $('#charlaMsg', v).innerHTML = `<div style="display:flex;align-items:center;gap:10px">
+      <span style="color:var(--rec)">●</span>
+      <span class="lbl dim" style="font-size:11px">Grabando</span>
+      <span id="charlaVU" style="flex:1;max-width:220px"></span>
+      <span class="dim" style="font-size:12px">toca ■ para enviar</span></div>`;
+    charlaVU = makeVU($('#charlaVU', v));
+  };
+  const stopMeterUI = () => { charlaVU = null; if (charlaMeter) { charlaMeter.stop(); charlaMeter = null; } };
 
   micBtn.onclick = async () => {
     if (charlaRecording) {
-      // Detener
+      // ----- Detener y ENVIAR automáticamente -----
       if (preferServerSpeech()) {
         charlaRecording = false; setMicUI(false);
         let out;
         try { out = charlaRec ? charlaRec.stop() : null; } finally { charlaRec = null; }
+        stopMeterUI();
         if (!out) { charlaErr('No se grabó nada. Intenta de nuevo.'); return; }
         const pct = Math.round((out.peak || 0) * 100);
         if (out.empty) { charlaErr(`Casi no se captó tu voz (nivel ${pct}%). Habla más fuerte y cerca del micrófono, o toca una sugerencia.`); return; }
-        if (!isOnline()) { charlaErr('La voz en iPhone necesita internet. Escribe tu respuesta.'); return; }
+        if (!isOnline()) { charlaErr('La voz necesita internet. Escribe tu respuesta.'); return; }
         $('#charlaMsg', v).innerHTML = `<div class="dim"><span class="spinner"></span> Escuchando…</div>`;
         try {
           const t = await transcribeAudio(out.base64, out.mime);
           $('#charlaMsg', v).innerHTML = '';
-          if (t) { $('#say', v).value = t; } else { charlaErr(`No te entendí bien (nivel ${pct}%). Repite más claro o toca una sugerencia.`); }
+          if (t) { $('#say', v).value = t; sendMsg(); }  // ← se envía solo
+          else charlaErr(`No te entendí bien (nivel ${pct}%). Repite más claro o toca una sugerencia.`);
         } catch (e) { charlaErr(e.message || 'No se pudo transcribir. Escribe tu respuesta.'); }
       } else {
         charlaRecording = false; setMicUI(false);
-        if (charlaSR) { charlaSR.abort(); charlaSR = null; }
+        if (charlaSR) charlaSR.stop();  // finaliza -> onEnd envía solo
       }
       return;
     }
-    // Iniciar
+    // ----- Iniciar -----
     if (preferServerSpeech()) {
       try {
-        charlaRec = new AudioRecorder(null);
+        charlaRec = new AudioRecorder((lvl) => { if (charlaVU) charlaVU.setLevel(lvl); });
         await charlaRec.start();
-        charlaRecording = true; setMicUI(true);
+        charlaRecording = true; setMicUI(true); showMeter();
       } catch (_) { charlaRec = null; charlaErr(speechErrorMessage('not-allowed')); }
     } else {
       if (!recognitionSupported()) { charlaErr('Este navegador no reconoce voz. Escribe tu respuesta.'); return; }
       charlaSR = createRecognizer({
         onResult: (t) => { $('#say', v).value = t; },
-        onError: (code) => { charlaErr(speechErrorMessage(code)); charlaRecording = false; setMicUI(false); charlaSR = null; },
-        onEnd: () => { charlaRecording = false; setMicUI(false); charlaSR = null; },
+        onError: (code) => { charlaErr(speechErrorMessage(code)); charlaRecording = false; setMicUI(false); stopMeterUI(); charlaSR = null; },
+        onEnd: () => {
+          charlaRecording = false; setMicUI(false); stopMeterUI(); charlaSR = null;
+          if ($('#say', v).value.trim()) sendMsg();  // ← se envía solo
+        },
       });
       charlaSR.start();
-      charlaRecording = true; setMicUI(true);
+      charlaRecording = true; setMicUI(true); showMeter();
+      try { charlaMeter = new MicMeter((lvl) => { if (charlaVU) charlaVU.setLevel(lvl); }); await charlaMeter.start(); } catch (_) { charlaMeter = null; }
     }
   };
 

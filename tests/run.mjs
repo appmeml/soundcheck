@@ -257,6 +257,44 @@ await testA('transcribe: estable en 3 corridas', async () => {
   }
 });
 
+await testA('transcribe: si un modelo se satura (503), rota y responde', async () => {
+  const orig = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = async () => {
+    calls++;
+    if (calls === 1) return { status: 503, ok: false, async text() { return JSON.stringify({ error: { status: 'UNAVAILABLE', message: 'overloaded' } }); } };
+    return { status: 200, ok: true, async text() { return JSON.stringify({ candidates: [{ content: { parts: [{ text: 'here is my passport' }] } }] }); } };
+  };
+  try {
+    const req = { json: async () => ({ audio: 'QUJD', mime: 'audio/wav' }) };
+    const res = await transcribePost({ request: req, env: { GEMINI_API_KEY: 'k' } });
+    const body = await res.json();
+    assert.equal(res.status, 200);
+    assert.equal(body.transcript, 'here is my passport');
+    assert.ok(calls >= 2);
+  } finally { globalThis.fetch = orig; }
+});
+
+await testA('transcribe: usa Groq Whisper cuando Gemini falla', async () => {
+  const orig = globalThis.fetch;
+  const origFD = globalThis.FormData; const origBlob = globalThis.Blob; const origAtob = globalThis.atob;
+  // Stubs mínimos para el entorno de pruebas de Node.
+  globalThis.FormData = class { append() {} };
+  globalThis.Blob = class { constructor() {} };
+  globalThis.atob = (s) => Buffer.from(s, 'base64').toString('binary');
+  globalThis.fetch = async (url) => {
+    if (String(url).includes('groq.com')) return { status: 200, ok: true, async text() { return 'I am on vacation.'; } };
+    return { status: 503, ok: false, async text() { return JSON.stringify({ error: { status: 'UNAVAILABLE', message: 'overloaded' } }); } };
+  };
+  try {
+    const req = { json: async () => ({ audio: 'QUJD', mime: 'audio/wav' }) };
+    const res = await transcribePost({ request: req, env: { GEMINI_API_KEY: 'k', GROQ_API_KEY: 'g' } });
+    const body = await res.json();
+    assert.equal(res.status, 200);
+    assert.equal(body.transcript, 'i am on vacation'); // minúsculas y sin puntuación
+  } finally { globalThis.fetch = orig; globalThis.FormData = origFD; globalThis.Blob = origBlob; globalThis.atob = origAtob; }
+});
+
 console.log('\nCharla (proxy Gemini, fetch simulado):');
 
 async function chatWithMock(geminiText, { status = 200 } = {}) {
