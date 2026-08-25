@@ -274,6 +274,7 @@ import { TRIP_DATE } from './js/firebaseConfig.js';
 import {
   primeVoices, speak, stopSpeaking, createRecognizer, recognitionSupported,
   speechErrorMessage, MicMeter, AudioRecorder, transcribeAudio, preferServerSpeech,
+  playMelody, stopMelody, englishVoices, setPreferredVoice, getPreferredVoice,
 } from './js/audio.js';
 import * as store from './js/store.js';
 
@@ -501,6 +502,7 @@ function renderView() {
   const v = $('#view');
   if (!v) return;
   stopSpeaking();
+  stopMelody();
   if (S.view === 'today') return renderToday(v);
   if (S.view === 'kit') return renderPractice(v, 'speak');
   if (S.view === 'oido') return renderPractice(v, 'listen');
@@ -572,10 +574,47 @@ function renderToday(v) {
         <button class="grow" data-nav2="charla">Charla con IA</button>
       </div>
     </div>
+    <div class="panel">
+      <h2>Voz del tutor</h2>
+      <div class="row tight" style="align-items:center">
+        <select id="voiceSel" class="grow" style="background:var(--console);color:var(--text);border:1px solid var(--edge);border-radius:9px;padding:11px 12px;font-size:15px"></select>
+        <button id="voiceTest">▸ Probar</button>
+      </div>
+      <div class="dim" style="font-size:12px;margin-top:8px" id="voiceHint"></div>
+    </div>
     <button class="install-btn hide" data-install style="margin-top:4px">⤓ Instalar app en mi teléfono</button>`;
 
   $('#startSession').onclick = startDailySession;
   v.querySelectorAll('[data-nav2]').forEach((b) => b.onclick = () => { S.view = b.dataset.nav2; render(); });
+  setupVoicePicker(v);
+}
+
+function setupVoicePicker(v) {
+  const sel = $('#voiceSel', v);
+  const hint = $('#voiceHint', v);
+  if (!sel) return;
+  const fill = () => {
+    const voices = englishVoices();
+    if (!voices.length) {
+      sel.innerHTML = `<option>Cargando voces…</option>`;
+      hint.textContent = 'Si no aparecen voces, toca ▸ Probar una vez.';
+      return;
+    }
+    const pref = getPreferredVoice();
+    sel.innerHTML = voices.map((vo) =>
+      `<option value="${esc(vo.voiceURI)}" ${vo.voiceURI === pref ? 'selected' : ''}>${esc(vo.name)} (${esc(vo.lang)})</option>`).join('');
+    hint.innerHTML = isIOSDevice()
+      ? 'Consejo iPhone: para voces más naturales, ve a Ajustes → Accesibilidad → Contenido leído → Voces → Inglés y descarga una voz “Mejorada/Premium” (ej. Samantha).'
+      : 'Elige la voz que suene más natural. En Chrome, “Google US English” suele ser la mejor.';
+  };
+  fill();
+  if (window.speechSynthesis) window.speechSynthesis.onvoiceschanged = fill;
+  sel.onchange = () => { setPreferredVoice(sel.value); };
+  $('#voiceTest', v).onclick = async () => {
+    if (sel.value && !sel.value.startsWith('Cargando')) setPreferredVoice(sel.value);
+    await speak('Hello! Let us practice English together.', 1.0);
+    fill();
+  };
 }
 
 function weakSpotPanel(weak) {
@@ -1163,10 +1202,22 @@ function renderSong(v, songId) {
   head.innerHTML = `<h2>${esc(s.title)}</h2>
     <div class="dim">Nivel ${esc(s.level)} · ${esc(s.origin)}</div>
     <div class="row" style="margin-top:10px">
+      ${s.melody ? `<button class="grow" id="playMelody">🎵 Melodía</button>` : ''}
       <button class="primary grow" id="playAll">▸ Cantar todo</button>
       <button class="grow" id="practiceSong">🎤 Practicar</button>
-    </div>`;
+    </div>
+    ${s.melody ? `<div class="dim" style="font-size:12px;margin-top:8px">Melodía real de la canción (tonos). Toca 🎵 y canta encima con la letra de abajo.</div>` : ''}`;
   v.appendChild(head);
+  if (s.melody) {
+    const mb = $('#playMelody', head);
+    const resetMb = () => { mb.classList.remove('danger'); mb.textContent = '🎵 Melodía'; };
+    mb.onclick = () => {
+      if (mb.classList.contains('danger')) { stopMelody(); resetMb(); return; }
+      stopSpeaking();
+      mb.classList.add('danger'); mb.textContent = '■ Detener';
+      playMelody(s.melody, resetMb);
+    };
+  }
   const list = document.createElement('div');
   list.className = 'panel';
   list.innerHTML = s.lines.map((l, i) => `

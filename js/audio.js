@@ -6,17 +6,53 @@
 // ---------- SpeechSynthesis (escuchar) ----------
 
 let cachedVoice = null;
+const VOICE_PREF_KEY = 'sc_voice_uri';
+
+// Nombres de voces en-US que suenan MÁS NATURALES (según plataforma). Se usan
+// para elegir por defecto la mejor disponible en vez de la robótica genérica.
+const NATURAL_HINTS = [
+  'samantha', 'ava', 'allison', 'susan', 'nicky', 'aaron', 'zoe', 'evan', 'nathan', // Apple (mejores si están instaladas)
+  'google us english', 'google',              // Chrome/Android
+  'microsoft aria', 'microsoft jenny', 'microsoft guy', 'microsoft', // Edge/Windows
+  'natural', 'enhanced', 'premium', 'siri',   // marcadores de alta calidad
+];
+
+export function englishVoices() {
+  const voices = window.speechSynthesis ? window.speechSynthesis.getVoices() : [];
+  return voices.filter((v) => /^en(\b|[-_])/i.test(v.lang));
+}
+
+function scoreVoice(v) {
+  const n = (v.name || '').toLowerCase();
+  let s = 0;
+  if (/^en[-_]us/i.test(v.lang) || v.lang === 'en-US') s += 3;
+  else if (/^en/i.test(v.lang)) s += 1;
+  NATURAL_HINTS.forEach((h, i) => { if (n.includes(h)) s += (NATURAL_HINTS.length - i) + 5; });
+  if (/compact|eloquence|fred|albert|zarvox|robot/.test(n)) s -= 5; // voces viejas/robóticas
+  return s;
+}
 
 function pickEnglishVoice() {
-  const voices = window.speechSynthesis ? window.speechSynthesis.getVoices() : [];
+  const voices = englishVoices();
   if (!voices.length) return null;
-  // Preferimos una voz en-US.
-  return (
-    voices.find((v) => v.lang === 'en-US') ||
-    voices.find((v) => /^en[-_]US/i.test(v.lang)) ||
-    voices.find((v) => /^en/i.test(v.lang)) ||
-    null
-  );
+  // 1) La que el usuario eligió, si sigue disponible.
+  try {
+    const pref = localStorage.getItem(VOICE_PREF_KEY);
+    if (pref) {
+      const chosen = voices.find((v) => v.voiceURI === pref || v.name === pref);
+      if (chosen) return chosen;
+    }
+  } catch (_) {}
+  // 2) La mejor por puntaje (más natural).
+  return voices.slice().sort((a, b) => scoreVoice(b) - scoreVoice(a))[0] || null;
+}
+
+export function setPreferredVoice(uri) {
+  try { if (uri) localStorage.setItem(VOICE_PREF_KEY, uri); else localStorage.removeItem(VOICE_PREF_KEY); } catch (_) {}
+  cachedVoice = pickEnglishVoice();
+}
+export function getPreferredVoice() {
+  try { return localStorage.getItem(VOICE_PREF_KEY) || ''; } catch (_) { return ''; }
 }
 
 export function primeVoices() {
@@ -33,10 +69,10 @@ export function speak(text, rate = 1.0) {
     }
     window.speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(text);
-    u.lang = 'en-US';
-    u.rate = rate;
     const v = cachedVoice || pickEnglishVoice();
-    if (v) u.voice = v;
+    if (v) { u.voice = v; u.lang = v.lang; } else { u.lang = 'en-US'; }
+    u.rate = rate;
+    u.pitch = 1.0;
     u.onend = () => resolve(true);
     u.onerror = () => resolve(false);
     window.speechSynthesis.speak(u);
@@ -45,6 +81,51 @@ export function speak(text, rate = 1.0) {
 
 export function stopSpeaking() {
   if (window.speechSynthesis) window.speechSynthesis.cancel();
+}
+
+// ---------- Melodías (Web Audio) ----------
+// Reproduce la tonada real (de dominio público) con tonos sintetizados.
+// Gratis, offline y sin infringir derechos de autor.
+const NOTE_FREQ = {
+  G3: 196.00, A3: 220.00, B3: 246.94,
+  C4: 261.63, D4: 293.66, E4: 329.63, F4: 349.23, G4: 392.00, A4: 440.00, B4: 493.88,
+  C5: 523.25, D5: 587.33, E5: 659.25, F5: 698.46, G5: 783.99,
+};
+let melodyCtx = null;
+let melodyTimer = 0;
+
+export function stopMelody() {
+  if (melodyTimer) { clearTimeout(melodyTimer); melodyTimer = 0; }
+  if (melodyCtx && melodyCtx.state !== 'closed') { melodyCtx.close().catch(() => {}); }
+  melodyCtx = null;
+}
+
+export function playMelody(melody, onDone) {
+  stopMelody();
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if (!AC || !melody || !Array.isArray(melody.notes)) { if (onDone) onDone(); return { stop() {} }; }
+  const ctx = new AC();
+  melodyCtx = ctx;
+  const beat = 60 / (melody.bpm || 110);
+  let t = ctx.currentTime + 0.06;
+  for (const [name, beats] of melody.notes) {
+    const dur = beats * beat;
+    if (name !== 'R' && NOTE_FREQ[name]) {
+      const o = ctx.createOscillator();
+      const g = ctx.createGain();
+      o.type = 'triangle';
+      o.frequency.value = NOTE_FREQ[name];
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.28, t + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + Math.max(0.08, dur * 0.9));
+      o.connect(g); g.connect(ctx.destination);
+      o.start(t); o.stop(t + dur);
+    }
+    t += dur;
+  }
+  const ms = (t - ctx.currentTime) * 1000 + 120;
+  melodyTimer = setTimeout(() => { stopMelody(); if (onDone) onDone(); }, ms);
+  return { stop: () => { stopMelody(); if (onDone) onDone(); } };
 }
 
 // ---------- SpeechRecognition (hablar) ----------

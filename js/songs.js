@@ -9,6 +9,7 @@ export const SONGS = [
   {
     id: 'twinkle', title: 'Twinkle, Twinkle, Little Star', level: 'A1',
     origin: 'Tradicional (dominio público)',
+    melody: { bpm: 100, notes: [['C4',1],['C4',1],['G4',1],['G4',1],['A4',1],['A4',1],['G4',2],['F4',1],['F4',1],['E4',1],['E4',1],['D4',1],['D4',1],['C4',2]] },
     lines: [
       { en: 'Twinkle, twinkle, little star,', es: 'Brilla, brilla, estrellita,', ph: 'TUÍN-kel TUÍN-kel LÍ-tel star' },
       { en: 'How I wonder what you are.', es: 'Cómo me pregunto qué eres.', ph: 'jáu ai UÓN-der uát yu ar' },
@@ -19,6 +20,7 @@ export const SONGS = [
   {
     id: 'row', title: 'Row, Row, Row Your Boat', level: 'A1',
     origin: 'Tradicional (dominio público)',
+    melody: { bpm: 110, notes: [['C4',1],['C4',1],['C4',1],['D4',1],['E4',1],['E4',1],['D4',1],['E4',1],['F4',1],['G4',2]] },
     lines: [
       { en: 'Row, row, row your boat,', es: 'Rema, rema, rema tu bote,', ph: 'róu róu róu yor bóut' },
       { en: 'Gently down the stream.', es: 'Suavemente por el río.', ph: 'CHÉNT-li daun de strim' },
@@ -69,6 +71,7 @@ export const SONGS = [
   {
     id: 'oldmacdonald', title: 'Old MacDonald Had a Farm', level: 'A1',
     origin: 'Tradicional (dominio público)',
+    melody: { bpm: 112, notes: [['G4',1],['G4',1],['G4',1],['D4',1],['E4',1],['E4',1],['D4',2],['B4',1],['B4',1],['A4',1],['A4',1],['G4',2]] },
     lines: [
       { en: 'Old MacDonald had a farm,', es: 'El viejo MacDonald tenía una granja,', ph: 'óuld mak-DÓ-nald jad a farm' },
       { en: 'E-I-E-I-O!', es: '¡I-A-I-A-O!', ph: 'i ai i ai óu' },
@@ -79,6 +82,7 @@ export const SONGS = [
   {
     id: 'baabaa', title: 'Baa, Baa, Black Sheep', level: 'A1',
     origin: 'Tradicional (dominio público)',
+    melody: { bpm: 104, notes: [['C4',1],['C4',1],['G4',1],['G4',1],['A4',1],['B4',1],['C5',1],['A4',1],['G4',2]] },
     lines: [
       { en: 'Baa, baa, black sheep, have you any wool?', es: 'Bee, bee, oveja negra, ¿tienes lana?', ph: 'ba ba blak shíp, jav yu É-ni wul' },
       { en: 'Yes sir, yes sir, three bags full.', es: 'Sí señor, sí señor, tres bolsas llenas.', ph: 'yes ser, yes ser, zri bags ful' },
@@ -98,6 +102,7 @@ export const SONGS = [
   {
     id: 'marylamb', title: 'Mary Had a Little Lamb', level: 'A1',
     origin: 'Tradicional (dominio público)',
+    melody: { bpm: 110, notes: [['E4',1],['D4',1],['C4',1],['D4',1],['E4',1],['E4',1],['E4',2],['D4',1],['D4',1],['D4',2],['E4',1],['G4',1],['G4',2]] },
     lines: [
       { en: 'Mary had a little lamb,', es: 'María tenía un corderito,', ph: 'MÉ-ri jad a LÍ-tel lamb' },
       { en: 'Its fleece was white as snow.', es: 'Su lana era blanca como la nieve.', ph: 'its flis uós juáit as snóu' },
@@ -118,6 +123,7 @@ export const SONGS = [
   {
     id: 'areyousleeping', title: 'Are You Sleeping? (Brother John)', level: 'A1',
     origin: 'Tradicional (dominio público)',
+    melody: { bpm: 120, notes: [['C4',1],['D4',1],['E4',1],['C4',1],['C4',1],['D4',1],['E4',1],['C4',1],['E4',1],['F4',1],['G4',2],['E4',1],['F4',1],['G4',2]] },
     lines: [
       { en: 'Are you sleeping, are you sleeping?', es: '¿Estás durmiendo, estás durmiendo?', ph: 'ar yu SLÍ-ping, ar yu SLÍ-ping' },
       { en: 'Brother John, Brother John?', es: '¿Hermano Juan, hermano Juan?', ph: 'BRÁ-der chon, BRÁ-der chon' },
