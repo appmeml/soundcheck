@@ -6,6 +6,7 @@ import { scoreAttempt } from '../js/lcs.js';
 import { updateCard, BOX_INTERVAL_DAYS, DAY, buildSession } from '../js/leitner.js';
 import { PHRASES } from '../js/content.js';
 import { detectWeakSpots } from '../js/weakspots.js';
+import { SONGS, songById } from '../js/songs.js';
 import { encodeWAV, bytesToBase64, rmsPeak, normalizeSamples } from '../js/audio.js';
 import { onRequestPost as transcribePost } from '../functions/api/transcribe.js';
 import { onRequestPost as chatPost } from '../functions/api/chat.js';
@@ -129,6 +130,20 @@ test('buildSession prioriza vencidas (más atrasadas primero)', () => {
   const plan = buildSession(PHRASES, cards, now);
   assert.equal(plan[0].phraseId, 'air-01'); // la más atrasada primero
   assert.ok(!plan.some((x) => x.phraseId === 'air-03')); // la futura no entra por vencida
+});
+
+test('Canciones: todas bien formadas, con id único y líneas completas', () => {
+  assert.ok(SONGS.length >= 20, 'debe haber al menos 20 canciones, hay ' + SONGS.length);
+  const ids = new Set();
+  for (const s of SONGS) {
+    assert.ok(s.id && s.title && s.level && Array.isArray(s.lines) && s.lines.length, 'canción mal formada: ' + s.id);
+    assert.ok(!ids.has(s.id), 'id duplicado: ' + s.id);
+    ids.add(s.id);
+    for (const l of s.lines) {
+      assert.ok(l.en && l.es && l.ph, 'línea incompleta en ' + s.id);
+    }
+  }
+  assert.ok(songById(SONGS[0].id));
 });
 
 console.log('\nDetección de puntos débiles:');
