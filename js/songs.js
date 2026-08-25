@@ -31,6 +31,7 @@ export const SONGS = [
   {
     id: 'happy', title: 'If You’re Happy and You Know It', level: 'A1',
     origin: 'Tradicional (dominio público)',
+    melody: { bpm: 120, notes: [['C4',1],['F4',1],['F4',1],['F4',1],['F4',1],['F4',1],['A4',1],['G4',1],['F4',2]] },
     lines: [
       { en: 'If you’re happy and you know it, clap your hands.', es: 'Si estás feliz y lo sabes, aplaude.', ph: 'if yor JÁ-pi and yu nóu it, klap yor jands' },
       { en: 'If you’re happy and you know it, stomp your feet.', es: 'Si estás feliz y lo sabes, zapatea.', ph: 'if yor JÁ-pi and yu nóu it, stomp yor fit' },
@@ -41,6 +42,7 @@ export const SONGS = [
   {
     id: 'head', title: 'Head, Shoulders, Knees and Toes', level: 'A1',
     origin: 'Tradicional (dominio público)',
+    melody: { bpm: 104, notes: [['G4',1],['G4',1],['E4',1],['E4',1],['C4',1],['C4',1],['G3',2],['A4',1],['A4',1],['F4',1],['F4',1],['C4',2]] },
     lines: [
       { en: 'Head, shoulders, knees and toes,', es: 'Cabeza, hombros, rodillas y dedos,', ph: 'jed, SHÓUL-ders, nis and tóus' },
       { en: 'Knees and toes.', es: 'Rodillas y dedos.', ph: 'nis and tóus' },
@@ -51,6 +53,7 @@ export const SONGS = [
   {
     id: 'firsttrip', title: 'My First Trip (original)', level: 'A2',
     origin: 'Original de Soundcheck',
+    melody: { bpm: 112, notes: [['C4',1],['E4',1],['G4',1],['G4',1],['A4',1],['G4',2],['F4',1],['E4',1],['D4',2]] },
     lines: [
       { en: 'I am flying far away,', es: 'Vuelo muy lejos,', ph: 'ai am FLÁI-ing far a-UÉI' },
       { en: 'To a bright and sunny place.', es: 'A un lugar brillante y soleado.', ph: 'tu a brait and SÁ-ni pleis' },
@@ -61,6 +64,7 @@ export const SONGS = [
   {
     id: 'stepbystep', title: 'Step by Step (original)', level: 'B1',
     origin: 'Original de Soundcheck',
+    melody: { bpm: 100, notes: [['E4',1],['E4',1],['F4',1],['G4',2],['G4',1],['F4',1],['E4',1],['D4',1],['C4',2]] },
     lines: [
       { en: 'Step by step, I find my way,', es: 'Paso a paso, encuentro mi camino,', ph: 'step bai step, ai faind mai UÉI' },
       { en: 'Speaking louder every day.', es: 'Hablando más fuerte cada día.', ph: 'SPÍ-king LÁU-der É-vri déi' },
@@ -93,6 +97,7 @@ export const SONGS = [
   {
     id: 'bingo', title: 'BINGO', level: 'A1',
     origin: 'Tradicional (dominio público)',
+    melody: { bpm: 120, notes: [['G4',1],['G4',1],['C5',1],['C5',1],['D5',1],['D5',1],['E5',2],['E5',1],['C5',1],['C5',1],['D5',1],['E5',2]] },
     lines: [
       { en: 'There was a farmer had a dog,', es: 'Había un granjero que tenía un perro,', ph: 'der uós a FÁR-mer jad a dog' },
       { en: 'And Bingo was his name-o.', es: 'Y Bingo era su nombre.', ph: 'and BÍN-gou uós jis NÉIM-o' },
@@ -113,6 +118,7 @@ export const SONGS = [
   {
     id: 'itsyspider', title: 'The Itsy Bitsy Spider', level: 'A1',
     origin: 'Tradicional (dominio público)',
+    melody: { bpm: 120, notes: [['G4',1],['C5',1],['C5',1],['C5',1],['D5',1],['E5',1],['E5',1],['D5',1],['C5',1],['D5',1],['E5',1],['C5',2]] },
     lines: [
       { en: 'The itsy bitsy spider climbed up the water spout.', es: 'La arañita subió por el caño.', ph: 'de ÍT-si BÍT-si SPÁI-der klaimd op de UÓ-ter spaut' },
       { en: 'Down came the rain and washed the spider out.', es: 'Bajó la lluvia y arrastró a la araña.', ph: 'daun keim de rein and uósht de SPÁI-der aut' },
@@ -134,6 +140,7 @@ export const SONGS = [
   {
     id: 'thisoldman', title: 'This Old Man', level: 'A1',
     origin: 'Tradicional (dominio público)',
+    melody: { bpm: 118, notes: [['G4',1],['E4',1],['G4',2],['G4',1],['E4',1],['G4',2],['A4',1],['G4',1],['F4',1],['E4',1],['D4',2]] },
     lines: [
       { en: 'This old man, he played one,', es: 'Este viejito, tocó el uno,', ph: 'dis óuld man, ji pleid uán' },
       { en: 'He played knick-knack on my thumb.', es: 'Tocó tris-tras en mi pulgar.', ph: 'ji pleid nik-nak on mai zamb' },
@@ -144,6 +151,7 @@ export const SONGS = [
   {
     id: 'cominground', title: "She'll Be Coming 'Round the Mountain", level: 'A2',
     origin: 'Tradicional (dominio público)',
+    melody: { bpm: 120, notes: [['C4',1],['C4',1],['C4',1],['E4',1],['G4',2],['G4',1],['E4',1],['G4',1],['E4',1],['C4',2]] },
     lines: [
       { en: "She'll be coming 'round the mountain when she comes.", es: 'Ella vendrá por la montaña cuando venga.', ph: 'shil bi KÁ-ming raund de MÁUN-ten uén shi kams' },
       { en: 'We will all go out to meet her when she comes.', es: 'Todos saldremos a recibirla cuando venga.', ph: 'ui uil ol góu aut tu mit jer uén shi kams' },
@@ -153,6 +161,7 @@ export const SONGS = [
   {
     id: 'mybonnie', title: 'My Bonnie Lies Over the Ocean', level: 'A2',
     origin: 'Tradicional (dominio público)',
+    melody: { bpm: 108, notes: [['G4',1],['C5',2],['E5',1],['D5',1],['C5',1],['D5',2],['E5',1],['C5',3]] },
     lines: [
       { en: 'My Bonnie lies over the ocean,', es: 'Mi Bonnie está sobre el océano,', ph: 'mai BÓ-ni lais ÓU-ver de ÓU-shan' },
       { en: 'My Bonnie lies over the sea.', es: 'Mi Bonnie está sobre el mar.', ph: 'mai BÓ-ni lais ÓU-ver de si' },
@@ -163,6 +172,7 @@ export const SONGS = [
   {
     id: 'saints', title: 'When the Saints Go Marching In', level: 'A2',
     origin: 'Tradicional (dominio público)',
+    melody: { bpm: 110, notes: [['C4',1],['E4',1],['F4',1],['G4',3],['C4',1],['E4',1],['F4',1],['G4',3],['C4',1],['E4',1],['F4',1],['G4',2],['E4',1],['C4',1],['E4',1],['D4',3]] },
     lines: [
       { en: 'Oh, when the saints go marching in,', es: 'Oh, cuando los santos marchen,', ph: 'ou, uén de seints góu MÁR-ching in' },
       { en: 'Oh, when the saints go marching in,', es: 'Oh, cuando los santos marchen,', ph: 'ou, uén de seints góu MÁR-ching in' },
@@ -173,6 +183,7 @@ export const SONGS = [
   {
     id: 'amazinggrace', title: 'Amazing Grace', level: 'B1',
     origin: 'Tradicional (dominio público, 1779)',
+    melody: { bpm: 90, notes: [['G4',1],['C5',2],['E5',1],['C5',1],['E5',2],['D5',1],['C5',2],['A4',1],['G4',3]] },
     lines: [
       { en: 'Amazing grace, how sweet the sound,', es: 'Sublime gracia, qué dulce el sonido,', ph: 'a-MÉI-sing greis, jáu suít de saund' },
       { en: 'That saved a wretch like me.', es: 'Que salvó a un desdichado como yo.', ph: 'dat seivd a rech laik mi' },
@@ -183,6 +194,7 @@ export const SONGS = [
   {
     id: 'homerange', title: 'Home on the Range', level: 'B1',
     origin: 'Tradicional (dominio público, 1873)',
+    melody: { bpm: 100, notes: [['G4',1],['C5',2],['C5',1],['E5',1],['D5',1],['C5',2],['A4',1],['G4',3]] },
     lines: [
       { en: 'Oh, give me a home where the buffalo roam,', es: 'Oh, dame un hogar donde el búfalo vague,', ph: 'ou, guiv mi a jóum uér de BÁ-fa-lou róum' },
       { en: 'Where the deer and the antelope play.', es: 'Donde el venado y el antílope juegan.', ph: 'uér de díar and de ÁN-te-loup plei' },
@@ -193,6 +205,7 @@ export const SONGS = [
   {
     id: 'auldlang', title: 'Auld Lang Syne', level: 'B1',
     origin: 'Tradicional (dominio público, 1788)',
+    melody: { bpm: 92, notes: [['C4',1],['F4',2],['F4',1],['F4',1],['A4',2],['G4',1],['F4',2],['G4',1],['A4',3]] },
     lines: [
       { en: 'Should old acquaintance be forgot,', es: '¿Deberían olvidarse las viejas amistades,', ph: 'shud óuld a-KUÉIN-tans bi for-GÓT' },
       { en: 'And never brought to mind?', es: 'y nunca recordarse?', ph: 'and NÉ-ver brot tu maind' },
@@ -203,6 +216,7 @@ export const SONGS = [
   {
     id: 'findmyvoice', title: 'Find My Voice (original)', level: 'B1',
     origin: 'Original de Soundcheck',
+    melody: { bpm: 108, notes: [['G4',1],['A4',1],['G4',1],['E4',1],['C4',1],['D4',1],['E4',2],['E4',1],['D4',1],['C4',1],['D4',1],['G4',2]] },
     lines: [
       { en: 'Word by word, I say what I mean,', es: 'Palabra por palabra, digo lo que quiero,', ph: 'uerd bai uerd, ai sei uát ai min' },
       { en: "Building dreams I've never seen.", es: 'Construyendo sueños que nunca vi.', ph: 'BÍL-ding drims aiv NÉ-ver sin' },
@@ -213,6 +227,7 @@ export const SONGS = [
   {
     id: 'worldiswide', title: 'The World Is Wide (original)', level: 'B2',
     origin: 'Original de Soundcheck',
+    melody: { bpm: 104, notes: [['C4',1],['D4',1],['E4',1],['G4',2],['E4',1],['D4',1],['C4',2],['E4',1],['G4',1],['A4',1],['G4',2]] },
     lines: [
       { en: 'The world is wide and full of doors,', es: 'El mundo es amplio y lleno de puertas,', ph: 'de uerld is uaid and ful of dors' },
       { en: 'Each new word can open more.', es: 'Cada palabra nueva puede abrir más.', ph: 'ich nyu uerd kan ÓU-pen mor' },

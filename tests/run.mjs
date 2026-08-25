@@ -146,6 +146,18 @@ test('Canciones: todas bien formadas, con id único y líneas completas', () => 
   assert.ok(songById(SONGS[0].id));
 });
 
+test('Canciones: TODAS tienen melodía válida (notas y duraciones)', () => {
+  const NOTES = new Set(['R', 'G3', 'A3', 'B3', 'C4', 'D4', 'E4', 'F4', 'G4', 'A4', 'B4', 'C5', 'D5', 'E5', 'F5', 'G5']);
+  for (const s of SONGS) {
+    assert.ok(s.melody && Array.isArray(s.melody.notes) && s.melody.notes.length, 'sin melodía: ' + s.id);
+    assert.ok(s.melody.bpm >= 40 && s.melody.bpm <= 200, 'bpm raro en ' + s.id);
+    for (const [name, beats] of s.melody.notes) {
+      assert.ok(NOTES.has(name), `nota inválida "${name}" en ${s.id}`);
+      assert.ok(beats > 0 && beats <= 4, `duración rara (${beats}) en ${s.id}`);
+    }
+  }
+});
+
 console.log('\nDetección de puntos débiles:');
 
 test('Un patrón con 3+ palabras distintas se reporta', () => {
