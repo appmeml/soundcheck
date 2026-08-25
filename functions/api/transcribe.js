@@ -116,10 +116,15 @@ async function tryGroqWhisper(env, audio, mime) {
   } catch (_) { return null; }
 }
 
+function geminiKeys(env) {
+  return [env && env.GEMINI_API_KEY, env && env.GEMINI_API_KEY_2, env && env.GEMINI_API_KEY_3]
+    .filter((k) => k && String(k).trim());
+}
+
 export async function onRequestPost({ request, env }) {
-  const geminiKey = env && env.GEMINI_API_KEY;
+  const keys = geminiKeys(env);
   const groqKey = env && env.GROQ_API_KEY;
-  if (!geminiKey && !groqKey) {
+  if (!keys.length && !groqKey) {
     return json({ error: 'Falta configurar GEMINI_API_KEY en Cloudflare. Usa el cuadro de texto para practicar.' }, 401);
   }
 
@@ -140,9 +145,10 @@ export async function onRequestPost({ request, env }) {
   }
 
   let g = null;
-  if (geminiKey) {
-    g = await tryGemini(env, geminiKey, audio, mime);
+  for (const k of keys) {
+    g = await tryGemini(env, k, audio, mime);
     if (g.ok) return json({ transcript: g.text });
+    if (g.reason !== 'quota') break; // solo rota de llave si esta se quedó sin cuota
   }
 
   if (!groqFirst) {

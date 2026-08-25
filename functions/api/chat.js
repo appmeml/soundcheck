@@ -172,10 +172,25 @@ async function tryGroq(env, systemText, contents) {
   } catch (_) { return null; }
 }
 
+// Todas las llaves de Gemini configuradas (para SUMAR cuotas de varios proyectos).
+function geminiKeys(env) {
+  return [env && env.GEMINI_API_KEY, env && env.GEMINI_API_KEY_2, env && env.GEMINI_API_KEY_3]
+    .filter((k) => k && String(k).trim());
+}
+// ¿Conviene probar con OTRA llave de Gemini? Solo si esta se quedó sin cuota o es inválida.
+function shouldTryNextKey(g) {
+  if (g.reason === 'quota') return true;
+  if (g.reason === 'fatal') {
+    const m = (() => { try { return String(JSON.parse(g.raw).error.message || '').toLowerCase(); } catch (_) { return ''; } })();
+    return m.includes('api key not valid') || g.status === 401;
+  }
+  return false;
+}
+
 export async function onRequestPost({ request, env }) {
-  const geminiKey = env && env.GEMINI_API_KEY;
+  const keys = geminiKeys(env);
   const groqKey = env && env.GROQ_API_KEY;
-  if (!geminiKey && !groqKey) {
+  if (!keys.length && !groqKey) {
     return json({ error: 'Falta configurar GEMINI_API_KEY en Cloudflare. La Charla no está disponible; Kit y Oído siguen funcionando.' }, 401);
   }
 
@@ -204,9 +219,13 @@ export async function onRequestPost({ request, env }) {
       const gr = await tryGroq(env, systemText, contents);
       if (gr && gr.ok) return json(gr.data);
     } else {
-      const g = await tryGemini(env, geminiKey, systemText, contents);
-      if (g.ok) return json(g.data);
-      geminiFail = g;
+      // Rota entre las llaves de Gemini: si una se quedó sin cuota, prueba la siguiente.
+      for (const k of keys) {
+        const g = await tryGemini(env, k, systemText, contents);
+        if (g.ok) return json(g.data);
+        geminiFail = g;
+        if (!shouldTryNextKey(g)) break;
+      }
     }
   }
 
@@ -229,7 +248,7 @@ export async function onRequestPost({ request, env }) {
 // AI_PRIMARY ('groq'|'gemini') permite forzarlo.
 function providerOrder(env) {
   const hasGroq = !!(env && env.GROQ_API_KEY);
-  const hasGemini = !!(env && env.GEMINI_API_KEY);
+  const hasGemini = geminiKeys(env).length > 0;
   const explicit = env && env.AI_PRIMARY && String(env.AI_PRIMARY).toLowerCase();
   let order;
   if (explicit === 'gemini') order = ['gemini', 'groq'];

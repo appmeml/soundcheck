@@ -101,8 +101,13 @@ test('bestScore y attempts se acumulan correctamente', () => {
 
 console.log('\nSesión y contenido:');
 
-test('Hay exactamente 46 frases', () => {
-  assert.equal(PHRASES.length, 46);
+test('Hay 61 frases (46 de viaje + 15 de niveles más altos), todas bien formadas', () => {
+  assert.equal(PHRASES.length, 61);
+  for (const p of PHRASES) {
+    assert.ok(p.id && p.en && p.es && p.ph && Array.isArray(p.tags), 'frase mal formada: ' + p.id);
+  }
+  const ids = new Set(PHRASES.map((p) => p.id));
+  assert.equal(ids.size, PHRASES.length, 'hay ids duplicados');
 });
 
 test('buildSession arma 12 tarjetas con 8 speak + 4 listen', () => {
@@ -448,6 +453,25 @@ await testA('chat: usa Groq de respaldo cuando Gemini está saturado', async () 
     const body = await res.json();
     assert.equal(res.status, 200);
     assert.equal(body.reply, 'Sure!');
+  } finally { globalThis.fetch = orig; }
+});
+
+await testA('chat: si una llave de Gemini se queda sin cuota, usa la segunda', async () => {
+  const orig = globalThis.fetch;
+  const seenKeys = [];
+  globalThis.fetch = async (url) => {
+    const key = String(url).split('key=')[1] || '';
+    seenKeys.push(key);
+    if (key === 'key-uno') return { status: 429, ok: false, async text() { return JSON.stringify({ error: { status: 'RESOURCE_EXHAUSTED', message: 'quota' } }); } };
+    return { status: 200, ok: true, async text() { return JSON.stringify({ candidates: [{ content: { parts: [{ text: '{"reply":"Hi","reply_es":"Hola","correction":null,"options":["a","b","c"]}' }] } }] }); } };
+  };
+  try {
+    const req = { json: async () => ({ persona: 'x', messages: [] }) };
+    const res = await chatPost({ request: req, env: { GEMINI_API_KEY: 'key-uno', GEMINI_API_KEY_2: 'key-dos' } });
+    const body = await res.json();
+    assert.equal(res.status, 200);
+    assert.equal(body.reply, 'Hi');
+    assert.ok(seenKeys.includes('key-dos'), 'debió intentar la segunda llave');
   } finally { globalThis.fetch = orig; }
 });
 

@@ -67,6 +67,33 @@ export const SCENARIOS = [
     name: 'Conocer gente',
     persona: 'You are someone the user just met at a social event. Be warm and curious: ask where they are from, what they do, and what they like.',
   },
+
+  // --- Avanzado (para niveles más altos: opiniones, escuela, planes) ---
+  {
+    id: 'school', group: 'advanced',
+    name: 'Escuela y estudios',
+    persona: 'You are a friendly American teacher chatting with a student about classes, homework, favorite subjects and school life. Ask follow-up questions.',
+  },
+  {
+    id: 'movies', group: 'advanced',
+    name: 'Películas y series',
+    persona: 'You are a friend talking about movies, series and music. Ask the user their opinion, share yours, and keep the chat going.',
+  },
+  {
+    id: 'plans', group: 'advanced',
+    name: 'Hacer planes',
+    persona: 'You are a friend making weekend plans. Suggest activities, ask what the user prefers, and agree on a day and time.',
+  },
+  {
+    id: 'story', group: 'advanced',
+    name: 'Contar una historia',
+    persona: 'You are a curious friend. Ask the user to tell you about their day or a fun memory, react with interest, and ask for more details.',
+  },
+  {
+    id: 'interview', group: 'advanced',
+    name: 'Entrevista de trabajo',
+    persona: 'You are a friendly hiring manager doing a simple job interview. Ask about experience, strengths and why they want the job. Encourage them.',
+  },
 ];
 
 export const PHRASES = [
@@ -127,6 +154,27 @@ export const PHRASES = [
   { id: 'shp-05', scen: 'shopping', en: 'I need some help.',              es: 'Necesito ayuda.',                ph: 'ai nid som jelp',                   tags: ['h', 'final'] },
   { id: 'shp-06', scen: 'shopping', en: 'I lost my phone.',               es: 'Perdí mi teléfono.',             ph: 'ai lost mai foun',                  tags: ['final'] },
   { id: 'shp-07', scen: 'shopping', en: 'Where is the nearest pharmacy?', es: '¿Dónde está la farmacia más cercana?', ph: 'juér is de NÍ-rest FÁR-ma-si',  tags: ['w', 'th'] },
+
+  // 7. Vida diaria (A2) — para seguir después del viaje
+  { id: 'day-01', scen: 'daily', level: 'A2', en: 'Could you help me, please?',            es: '¿Podría ayudarme, por favor?',        ph: 'kud yu jelp mi plis',                 tags: ['h', 'final'] },
+  { id: 'day-02', scen: 'daily', level: 'A2', en: "I don't understand, can you explain?",  es: 'No entiendo, ¿puede explicar?',       ph: 'ai dont an-der-STÁND, kan yu eks-PLÉIN', tags: ['final', 'scluster'] },
+  { id: 'day-03', scen: 'daily', level: 'A2', en: 'What do you recommend?',                es: '¿Qué recomienda?',                     ph: 'uát du yu re-ko-MÉND',                tags: ['w', 'final'] },
+  { id: 'day-04', scen: 'daily', level: 'A2', en: 'How much does it cost per night?',      es: '¿Cuánto cuesta por noche?',            ph: 'jáu moch dos it kost per nait',       tags: ['h', 'final'] },
+  { id: 'day-05', scen: 'daily', level: 'A2', en: 'Can I pay with a credit card?',         es: '¿Puedo pagar con tarjeta de crédito?', ph: 'kan ai pei uíz a KRÉ-dit kard',       tags: ['w', 'th', 'final'] },
+  { id: 'day-06', scen: 'daily', level: 'A2', en: "I'm looking for the train station.",    es: 'Estoy buscando la estación del tren.', ph: 'aim LÚ-king for de trein STÉI-shon',  tags: ['scluster', 'final'] },
+
+  // 8. Opiniones y escuela (B1) — para los niveles más altos
+  { id: 'opn-01', scen: 'opinions', level: 'B1', en: 'In my opinion, it is a great idea.',        es: 'En mi opinión, es una gran idea.',              ph: 'in mai o-PÍ-nion, it is a greit ai-DÍA',      tags: ['th'] },
+  { id: 'opn-02', scen: 'opinions', level: 'B1', en: 'I agree with you, but I have a question.',   es: 'Estoy de acuerdo contigo, pero tengo una pregunta.', ph: 'ai a-GRÍ uíz yu, bat ai jav a KUÉS-chon', tags: ['w', 'vb', 'h'] },
+  { id: 'opn-03', scen: 'opinions', level: 'B1', en: 'I think it depends on the situation.',       es: 'Creo que depende de la situación.',              ph: 'ai zink it di-PÉNDS on de si-chu-É-shon',     tags: ['th', 'final'] },
+  { id: 'opn-04', scen: 'opinions', level: 'B1', en: 'Let me think about it for a moment.',        es: 'Déjame pensarlo un momento.',                    ph: 'let mi zink a-BÁUT it for a MÓU-ment',        tags: ['th', 'final'] },
+  { id: 'sch-01', scen: 'school',   level: 'A2', en: 'I have homework to do tonight.',             es: 'Tengo tarea que hacer esta noche.',              ph: 'ai jav JÓUM-uork tu du tu-NÁIT',             tags: ['h', 'w', 'final'] },
+  { id: 'sch-02', scen: 'school',   level: 'A2', en: 'What time does the class start?',            es: '¿A qué hora empieza la clase?',                  ph: 'uát taim dos de klas start',                 tags: ['w', 'th', 'scluster'] },
+
+  // 9. Hacer planes (B1)
+  { id: 'pln-01', scen: 'plans', level: 'B1', en: 'Do you want to hang out this weekend?',   es: '¿Quieres salir este fin de semana?',   ph: 'du yu uánt tu jang aut dis UÍK-end',  tags: ['w', 'h', 'th', 'final'] },
+  { id: 'pln-02', scen: 'plans', level: 'B1', en: "Let's meet at seven in the evening.",     es: 'Veámonos a las siete de la noche.',    ph: 'lets mit at SÉ-ven in de ÍV-ning',    tags: ['scluster', 'th', 'vb'] },
+  { id: 'pln-03', scen: 'plans', level: 'B1', en: "Sorry, I'm running a little late.",       es: 'Perdón, voy un poco tarde.',           ph: 'SÓ-rri, aim RÁ-ning a LÍ-tel leit',   tags: ['scluster', 'final'] },
 ];
 
 export function phraseById(id) {

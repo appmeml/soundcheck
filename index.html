@@ -266,6 +266,7 @@
 
 <script type="module">
 import { PHRASES, SCENARIOS, phraseById, scenarioById } from './js/content.js';
+import { SONGS, songById } from './js/songs.js';
 import { scoreAttempt } from './js/lcs.js';
 import { newCard, updateCard, buildSession, isMastered, DAY } from './js/leitner.js';
 import { detectWeakSpots, phrasesForPattern } from './js/weakspots.js';
@@ -425,13 +426,14 @@ function wireTopbar() {
 }
 
 // ---------- Tutorial de uso ----------
-const TUTORIAL_KEY = 'sc_tutorial_v1';
+const TUTORIAL_KEY = 'sc_tutorial_v2';
 const TUTORIAL_STEPS = [
   { ic: '🎚️', title: 'Bienvenido a Soundcheck', body: 'Practica inglés hablado y de oído en sesiones cortas. La meta es tu viaje… y seguir mejorando mucho después.' },
   { ic: '◎', title: 'Hoy · tu sesión diaria', body: 'Toca “Sesión de hoy”. La app elige por ti 12 tarjetas: repasa lo que ya viste y suma frases nuevas. Con 10–15 min al día basta.' },
   { ic: '▤', title: 'Kit · pronunciación', body: 'Escucha la frase (lento o normal), toca 🎙 Grabarme y repítela. Verás en verde lo que dijiste bien y en rojo lo que se perdió.' },
   { ic: '◑', title: 'Oído · comprensión', body: 'Lo más importante para ti: escuchas SIN ver el texto y escribes lo que oíste. Sube la velocidad poco a poco hasta “Nativo”.' },
-  { ic: '❝', title: 'Charla · conversar con IA', body: 'Habla o escribe con un tutor de IA. Te responde en inglés simple con traducción, te corrige y te sugiere qué decir. Hay temas de viaje y del día a día.' },
+  { ic: '❝', title: 'Charla · conversar con IA', body: 'Habla o escribe con un tutor de IA. Te responde en inglés simple con traducción, te corrige y te sugiere qué decir. Hay temas de viaje, del día a día y avanzados.' },
+  { ic: '♪', title: 'Canta · aprender con canciones', body: 'Canciones fáciles con traducción y pronunciación. Escúchalas, canta y practica línea por línea. Un juego extra para el oído — ideal para los niños.' },
   { ic: '✦', title: 'Racha y punto débil', body: 'Practica cada día para subir tu racha. La app detecta tu sonido más difícil (la “th”, la “v”…) y arma práctica solo de eso.' },
   { ic: '⁂', title: 'Familia', body: 'Crea un grupo y comparte el código de 6 letras. Cada quien tiene su progreso; el marcador solo muestra frases dominadas y racha.' },
 ];
@@ -482,6 +484,7 @@ function bottomNav() {
     ['kit', 'Kit', '▤'],
     ['oido', 'Oído', '◑'],
     ['charla', 'Charla', '❝'],
+    ['canta', 'Canta', '♪'],
     ['familia', 'Familia', '⁂'],
   ];
   return `<nav class="bottom">${items.map(([id, label, ic]) =>
@@ -502,6 +505,7 @@ function renderView() {
   if (S.view === 'kit') return renderPractice(v, 'speak');
   if (S.view === 'oido') return renderPractice(v, 'listen');
   if (S.view === 'charla') return renderCharla(v);
+  if (S.view === 'canta') return renderSongs(v);
   if (S.view === 'familia') return renderFamilia(v);
 }
 
@@ -907,6 +911,7 @@ const SCEN_ACCENT = {
   airport: '#6FA8FF', hotel: '#F5B342', restaurant: '#7FD1AE',
   parks: '#E58AC9', uber: '#5FC9C9', shopping: '#F2915B',
   smalltalk: '#9FD35B', work: '#C8A2FF', phone: '#66C7E8', meet: '#F0A6C0',
+  school: '#7FD1AE', movies: '#E58AC9', plans: '#66C7E8', story: '#F5B342', interview: '#C8A2FF',
 };
 function robotAvatarSVG(accent) {
   return `<svg viewBox="0 0 120 120" role="img" aria-label="Tutor de inglés">
@@ -932,11 +937,12 @@ function renderCharla(v) {
     v.appendChild(backHeader('Charla'));
     const travel = SCENARIOS.filter((s) => s.group === 'travel');
     const daily = SCENARIOS.filter((s) => s.group === 'daily');
-    const grp = (title, list) => `<h2>${esc(title)}</h2>
-      <div class="row" style="margin-bottom:14px">${list.map((s) => `<button class="grow" data-scen="${esc(s.id)}">${esc(s.name)}</button>`).join('')}</div>`;
+    const advanced = SCENARIOS.filter((s) => s.group === 'advanced');
+    const grp = (title, list) => list.length ? `<h2>${esc(title)}</h2>
+      <div class="row" style="margin-bottom:14px">${list.map((s) => `<button class="grow" data-scen="${esc(s.id)}">${esc(s.name)}</button>`).join('')}</div>` : '';
     const p = document.createElement('div');
     p.className = 'panel';
-    p.innerHTML = `${grp('Para el viaje', travel)}${grp('Día a día', daily)}
+    p.innerHTML = `${grp('Para el viaje', travel)}${grp('Día a día', daily)}${grp('Avanzado', advanced)}
       <p class="dim">La IA actúa el personaje y responde en inglés muy simple, con traducción. Si se acaba la cuota gratuita del día, Kit y Oído siguen funcionando siempre.</p>`;
     v.appendChild(p);
     v.querySelectorAll('[data-scen]').forEach((b) => b.onclick = () => {
@@ -1002,18 +1008,35 @@ function renderCharla(v) {
     chips.querySelectorAll('[data-opt]').forEach((b) => b.onclick = () => { $('#say', v).value = b.dataset.opt; sendMsg(); });
   };
 
+  let sending = false; // evita envíos dobles mientras el tutor responde
+  const setSendingUI = (on) => {
+    const s = $('#send', v), sa = $('#say', v), mic = $('#micSay', v);
+    if (s) s.disabled = on;
+    if (sa) sa.disabled = on;
+    if (mic) mic.disabled = on;
+  };
+
   async function sendMsg(seed) {
+    if (sending) return; // ya hay un mensaje en curso
     const input = $('#say', v);
-    const text = seed || input.value.trim();
-    if (!text && !seed && st.history.length) return;
+    const text = (seed || input.value).trim();
+    const isGreeting = !text && st.history.length === 0; // saludo inicial del personaje
+    if (!text && !isGreeting) return; // no enviamos vacío
+    // Evita mandar dos veces lo mismo seguido (p. ej. doble toque / doble dictado).
+    if (text) {
+      const last = [...st.history].reverse().find((m) => m.role === 'user');
+      if (last && last.text.trim().toLowerCase() === text.toLowerCase()) { input.value = ''; return; }
+    }
+    sending = true; setSendingUI(true);
     if (text) st.history.push({ role: 'user', text });
     input.value = '';
     drawThread();
-    $('#charlaMsg', v).innerHTML = `<div class="dim"><span class="spinner"></span> Pensando…</div>`;
     $('#chips', v).innerHTML = '';
+    $('#charlaMsg', v).innerHTML = `<div class="dim"><span class="spinner"></span> Pensando…</div>`;
 
     if (!isOnline()) {
       $('#charlaMsg', v).innerHTML = `<div class="banner warn">Charla necesita internet. Kit y Oído funcionan sin conexión.</div>`;
+      sending = false; setSendingUI(false);
       return;
     }
     try {
@@ -1025,6 +1048,8 @@ function renderCharla(v) {
       speakAvatar(data.reply, 1.0); // el avatar "habla" la respuesta
     } catch (e) {
       $('#charlaMsg', v).innerHTML = `<div class="banner err">${esc(e.message || 'Error de conexión con la IA.')}</div>`;
+    } finally {
+      sending = false; setSendingUI(false);
     }
   }
 
@@ -1108,6 +1133,96 @@ function renderCharla(v) {
   if (!st.history.length) sendMsg(); // saludo inicial del personaje
 }
 
+// ---------- CANTA (canciones) ----------
+function renderSongs(v) {
+  v.innerHTML = '';
+  v.appendChild(backHeader('Canta'));
+  const intro = document.createElement('div');
+  intro.className = 'panel';
+  intro.innerHTML = `<h2>Canciones</h2>
+    <p class="dim">Aprende cantando: escucha cada línea, mira la traducción y cómo suena, y canta. Un juego extra para acelerar tu oído. Todas son de dominio público u originales de Soundcheck.</p>`;
+  v.appendChild(intro);
+  for (const s of SONGS) {
+    const c = document.createElement('button');
+    c.className = 'panel';
+    c.style.cssText = 'display:block;width:100%;text-align:left';
+    c.innerHTML = `<div class="big-en" style="font-size:18px">${esc(s.title)}</div>
+      <div class="dim" style="font-size:13px">Nivel ${esc(s.level)} · ${esc(s.origin)}</div>`;
+    c.onclick = () => renderSong(v, s.id);
+    v.appendChild(c);
+  }
+}
+
+function renderSong(v, songId) {
+  const s = songById(songId);
+  if (!s) { renderSongs(v); return; }
+  v.innerHTML = '';
+  v.appendChild(backHeader(s.title, () => renderSongs(v)));
+  const head = document.createElement('div');
+  head.className = 'panel';
+  head.innerHTML = `<h2>${esc(s.title)}</h2>
+    <div class="dim">Nivel ${esc(s.level)} · ${esc(s.origin)}</div>
+    <div class="row" style="margin-top:10px">
+      <button class="primary grow" id="playAll">▸ Cantar todo</button>
+      <button class="grow" id="practiceSong">🎤 Practicar</button>
+    </div>`;
+  v.appendChild(head);
+  const list = document.createElement('div');
+  list.className = 'panel';
+  list.innerHTML = s.lines.map((l, i) => `
+    <div style="padding:10px 0;${i < s.lines.length - 1 ? 'border-bottom:1px solid var(--edge)' : ''}">
+      <div class="row tight" style="align-items:center">
+        <button data-play="${i}" aria-label="Escuchar">▸</button>
+        <div class="big-en" style="font-size:18px;flex:1">${esc(l.en)}</div>
+      </div>
+      <div class="ph" style="margin-top:4px">${esc(l.ph)}</div>
+      <div class="es">${esc(l.es)}</div>
+    </div>`).join('');
+  v.appendChild(list);
+  list.querySelectorAll('[data-play]').forEach((b) => b.onclick = () => speak(s.lines[+b.dataset.play].en, 0.9));
+  $('#playAll', head).onclick = async () => {
+    for (const l of s.lines) { await speak(l.en, 0.9); }
+  };
+  $('#practiceSong', head).onclick = () => renderSongPractice(v, s);
+}
+
+function renderSongPractice(v, song) {
+  const st = { i: 0 };
+  const step = () => {
+    if (st.i >= song.lines.length) { renderSong(v, song.id); return; }
+    const l = song.lines[st.i];
+    const phrase = { id: `${song.id}-${st.i}`, en: l.en, es: l.es, ph: l.ph, tags: [] };
+    v.innerHTML = '';
+    v.appendChild(backHeader(song.title, () => renderSong(v, song.id)));
+    const meta = document.createElement('div');
+    meta.className = 'row'; meta.style.cssText = 'justify-content:flex-end;margin:-6px 0 8px';
+    meta.innerHTML = `<span class="mono dim">Línea ${st.i + 1}/${song.lines.length}</span>`;
+    v.appendChild(meta);
+    const cardHost = document.createElement('div');
+    v.appendChild(cardHost);
+    const nextBtn = document.createElement('button');
+    nextBtn.style.cssText = 'width:100%;margin-top:8px';
+    nextBtn.textContent = st.i < song.lines.length - 1 ? 'Siguiente línea →' : 'Terminar';
+    v.appendChild(nextBtn);
+    mountCard(cardHost, phrase, 'speak', () => {}, { inSession: false });
+    nextBtn.onclick = () => { if (cardHost._cleanup) cardHost._cleanup(); st.i++; step(); };
+  };
+  step();
+}
+
+// Compartir la app (con la familia / los hijos).
+function shareApp() {
+  const url = location.origin + location.pathname;
+  const text = 'Aprende inglés conmigo en Soundcheck 🎚️';
+  if (navigator.share) {
+    navigator.share({ title: 'Soundcheck', text, url }).catch(() => {});
+  } else if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(url).then(() => alert('Enlace copiado:\n' + url), () => prompt('Copia el enlace:', url));
+  } else {
+    prompt('Copia el enlace:', url);
+  }
+}
+
 async function callChat(scen, history) {
   // Solo los últimos 12 mensajes para no gastar la cuota.
   const trimmed = history.slice(-12).map((m) => ({
@@ -1155,8 +1270,10 @@ async function renderFamilia(v) {
           <button id="joinFam">Unirme</button>
         </div>
         <div id="famMsg"></div>
-      </div>`;
+      </div>
+      <button class="install-btn" id="shareApp" style="border-color:var(--edge);color:var(--text)">↗ Compartir Soundcheck con mi familia</button>`;
     v.insertAdjacentElement('afterbegin', backHeader('Familia'));
+    $('#shareApp').onclick = shareApp;
     $('#createFam').onclick = async () => {
       const name = prompt('Nombre del grupo:', 'Familia ' + (S.user.displayName || '').split(' ')[0]);
       if (name === null) return;
@@ -1190,6 +1307,7 @@ async function renderFamilia(v) {
     <div class="panel">
       <h2>${esc(fam ? fam.name : 'Mi familia')}</h2>
       <div class="dim">Código para invitar: <span class="kbd">${esc(familyId)}</span></div>
+      <button class="install-btn" id="shareApp" style="margin-top:12px;border-color:var(--edge);color:var(--text)">↗ Compartir app y código</button>
     </div>
     <div class="panel">
       <table>
@@ -1202,6 +1320,17 @@ async function renderFamilia(v) {
       </table>
     </div>`;
   v.insertAdjacentElement('afterbegin', backHeader('Familia'));
+  const shareBtn = $('#shareApp', v);
+  if (shareBtn) shareBtn.onclick = () => shareAppWithCode(familyId);
+}
+
+// Comparte la app incluyendo el código de la familia.
+function shareAppWithCode(code) {
+  const url = location.origin + location.pathname;
+  const text = `Únete a mi grupo en Soundcheck 🎚️ para practicar inglés. Código del grupo: ${code}`;
+  if (navigator.share) navigator.share({ title: 'Soundcheck', text, url }).catch(() => {});
+  else if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(`${text}\n${url}`).then(() => alert('Copiado:\n' + text + '\n' + url), () => prompt('Copia esto:', text + ' ' + url));
+  else prompt('Copia esto:', text + ' ' + url);
 }
 
 // El botón de punto débil vive en HOY pero se enlaza globalmente tras render.
